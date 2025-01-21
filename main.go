@@ -25,6 +25,12 @@ var (
 	logMu       sync.Mutex
 )
 
+const (
+	containername = "ReEnvisionAI"
+	container     = "learningathome/petals:main"
+	runcmd        = "python -m petals.cli.run_server --port 31330 bigscience/bloom-560m"
+)
+
 func main() {
 	mutexName := "Local\\ReEnvisionAIMutex"
 
@@ -76,19 +82,28 @@ func onReady() {
 	systray.SetTitle("ReEnvision AI")
 	systray.SetTooltip("ReEnvision AI")
 
-	showLogsMenu := systray.AddMenuItem("Show Logs", "Open the log file in Notepad")
-	//stopMenu := systray.AddMenuItem("Stop WSL Process", "Stop the running WSL process")
+	//showLogsMenu := systray.AddMenuItem("Show Logs", "Open the log file in Notepad")
+	startMenu := systray.AddMenuItem("Start", "Start running ReEnvision AI")
+	stopMenu := systray.AddMenuItem("Stop", "Stop running ReEnvision AI")
 	quitMenu := systray.AddMenuItem("Quit", "Exit the application")
 
 	startWSLProcess()
 
+	startMenu.Disable()
+
 	go func() {
 		for {
 			select {
-			case <-showLogsMenu.ClickedCh:
-				showLogs()
-			//case <-stopMenu.ClickedCh:
-			//	stopWSLProcess()
+			//case <-showLogsMenu.ClickedCh:
+			//	showLogs()
+			case <-stopMenu.ClickedCh:
+				stopWSLProcess()
+				stopMenu.Disable()
+				startMenu.Enable()
+			case <-startMenu.ClickedCh:
+				startWSLProcess()
+				startMenu.Disable()
+				stopMenu.Enable()
 			case <-quitMenu.ClickedCh:
 				stopWSLProcess()
 				systray.Quit()
@@ -106,8 +121,12 @@ func onExit() {
 }
 
 func startWSLProcess() {
-	//wslCmd = exec.Command("wsl.exe", "tail", "-f", "/dev/null")
-	wslCmd = exec.Command("wsl.exe", "bash", "-c", "source ~/petals/bin/activate && python3 -m petals.cli.run_server bigscience/bloom-560m")
+	//wslCmd = exec.Command("wsl.exe", "bash", "-c", "source ~/petals/bin/activate && python3 -m petals.cli.run_server bigscience/bloom-560m")
+	port := "31330"
+	portmap := port + ":" + port
+	volume := "petals-cache:/cache"
+
+	wslCmd = exec.Command("podman", "run", "-p", portmap, "--ipc", "host", "--gpus", "all", "--volume", volume, "--rm", "--name", containername, container, "python", "-m", "petals.cli.run_server", "--port", "31330", "bigscience/bloom-560m")
 	// Hide the child console window (Windows only)
 	wslCmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
 
@@ -165,6 +184,13 @@ func showLogs() {
 }
 
 func stopWSLProcess() {
+	stopCmd := exec.Command("podman", "stop", containername)
+	stopCmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+	err := stopCmd.Start()
+	if err != nil {
+		writeLog(fmt.Sprintf("Error stopping container: %v", err))
+	}
+
 	if wslCmd != nil && wslCmd.Process != nil {
 		writeLog("Stopping WSL process...")
 		err := wslCmd.Process.Kill()
