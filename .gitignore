@@ -1,0 +1,43 @@
+# Binaries for programs and plugins
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Output of build tools
+*.out
+*.test
+
+# Build and cache directories (for local development)
+bin/
+build/
+dist/
+
+# Go module caches
+*.modcache
+
+# Go coverage data
+*.coverprofile
+*.coverage
+*.cov
+
+# IDE / Editor directories and files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Node modules (in case of frontend or hybrid projects)
+node_modules/
+
+# If you're using vendor
+/vendor/
+
+# Any other files you do not wish to commit
+# e.g. sensitive configs, local environment files, etc.
+.env
