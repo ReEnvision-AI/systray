@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	_ "embed"
 	"fmt"
 	"io"
@@ -9,9 +10,9 @@ import (
 	"path/filepath"
 	"sync"
 	"syscall"
+	"time"
 
 	"github.com/getlantern/systray"
-
 	"golang.org/x/sys/windows"
 )
 
@@ -23,12 +24,16 @@ var (
 	logFile     *os.File
 	logFilePath string
 	logMu       sync.Mutex
+	stateMu     sync.Mutex
+	isRunning   bool
+	startMenu   *systray.MenuItem
+	stopMenu    *systray.MenuItem
 )
 
 const (
 	containername = "ReEnvisionAI"
-	container     = "learningathome/petals:main"
-	runcmd        = "python -m petals.cli.run_server --port 31330 bigscience/bloom-560m"
+	container     = "pgawestjones/petals"
+	runcmd        = "python -m petals.cli.run_server --port 31330 --initial_peers /ip4/50.106.9.34/tcp/40975/p2p/Qmf3UsPjnzbNVs6CjHDfU6XUjMuukZ4drQTvvmaSZJqLLA meta-llama/Llama-3.3-70B-Instruct"
 )
 
 func main() {
@@ -83,13 +88,15 @@ func onReady() {
 	systray.SetTooltip("ReEnvision AI")
 
 	//showLogsMenu := systray.AddMenuItem("Show Logs", "Open the log file in Notepad")
-	startMenu := systray.AddMenuItem("Start", "Start running ReEnvision AI")
-	stopMenu := systray.AddMenuItem("Stop", "Stop running ReEnvision AI")
+	startMenu = systray.AddMenuItem("Start", "Start running ReEnvision AI")
+	stopMenu = systray.AddMenuItem("Stop", "Stop running ReEnvision AI")
 	quitMenu := systray.AddMenuItem("Quit", "Exit the application")
 
-	startWSLProcess()
-
-	startMenu.Disable()
+	go func() {
+		startWSLProcess()
+		startMenu.Disable()
+		stopMenu.Enable()
+	}()
 
 	go func() {
 		for {
@@ -97,13 +104,23 @@ func onReady() {
 			//case <-showLogsMenu.ClickedCh:
 			//	showLogs()
 			case <-stopMenu.ClickedCh:
-				stopWSLProcess()
-				stopMenu.Disable()
-				startMenu.Enable()
+				if setRunning(true) {
+					go func() {
+						stopWSLProcess()
+						stopMenu.Disable()
+						startMenu.Enable()
+						setRunning(false)
+					}()
+				}
 			case <-startMenu.ClickedCh:
-				startWSLProcess()
-				startMenu.Disable()
-				stopMenu.Enable()
+				if setRunning(true) {
+					go func() {
+						startWSLProcess()
+						startMenu.Disable()
+						stopMenu.Enable()
+						setRunning(false)
+					}()
+				}
 			case <-quitMenu.ClickedCh:
 				stopWSLProcess()
 				systray.Quit()
@@ -120,13 +137,39 @@ func onExit() {
 	}
 }
 
+func waitForPodman() bool {
+	timeout := time.After(5 * time.Minute)
+	for {
+		select {
+		case <-timeout:
+			writeLog("Timed out waiting for Podman")
+			return false
+
+		default:
+			cmd := exec.Command("podman", "info")
+			cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+			err := cmd.Run()
+			if err == nil {
+				writeLog("Podman is ready")
+				return true
+			}
+			writeLog("Podman is not ready yet, waiting ...")
+			time.Sleep(5 * time.Second)
+		}
+	}
+}
+
 func startWSLProcess() {
-	//wslCmd = exec.Command("wsl.exe", "bash", "-c", "source ~/petals/bin/activate && python3 -m petals.cli.run_server bigscience/bloom-560m")
+	if !waitForPodman() {
+		writeLog("Aborting start: Podman did not become ready within 5 minutes")
+		return
+	}
+
 	port := "31330"
 	portmap := port + ":" + port
-	volume := "petals-cache:/cache"
+	volume := "api-cache:/cache"
 
-	wslCmd = exec.Command("podman", "run", "-p", portmap, "--ipc", "host", "--gpus", "all", "--volume", volume, "--rm", "--name", containername, container, "python", "-m", "petals.cli.run_server", "--port", "31330", "bigscience/bloom-560m")
+	wslCmd = exec.Command("podman", "run", "-p", portmap, "--gpus", "all", "--volume", volume, "--rm", "--name", containername, container, "python", "-m", "petals.cli.run_server", "--inference_max_length", "128000", "--port", "31330", "--initial_peers", "'/ip4/50.106.9.34/tcp/40975/p2p/Qmf3UsPjnzbNVs6CjHDfU6XUjMuukZ4drQTvvmaSZJqLLA'", "meta-llama/Llama-3.3-70B-Instruct")
 	// Hide the child console window (Windows only)
 	wslCmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
 
@@ -143,11 +186,13 @@ func startWSLProcess() {
 
 	if err := wslCmd.Start(); err != nil {
 		writeLog(fmt.Sprintf("Error starting WSL command: %v", err))
+		stopMenu.Disable()
+		startMenu.Enable()
 		return
 	}
 
 	// Write an initial message
-	writeLog("Started WSL process")
+	writeLog("Started ReAI process")
 
 	// Capture stdout/stderr in separate goroutines
 	go captureOutput(stdout)
@@ -156,16 +201,16 @@ func startWSLProcess() {
 
 func captureOutput(r io.ReadCloser) {
 	defer r.Close()
-	buf := make([]byte, 1024)
+	reader := bufio.NewReader(r)
+
 	for {
-		n, err := r.Read(buf)
-		if n > 0 {
-			text := string(buf[:n])
-			writeLog(text) // write to log file
+		line, err := reader.ReadString('\n')
+		if line != "" {
+			writeLog(line[:len(line)-1])
 		}
 		if err != nil {
 			if err != io.EOF {
-				writeLog(fmt.Sprintf("Error reading from WSL output: %v", err))
+				writeLog(fmt.Sprintf("Error reading from ReAI output: %v", err))
 			}
 			break
 		}
@@ -184,22 +229,29 @@ func showLogs() {
 }
 
 func stopWSLProcess() {
+	if wslCmd == nil || wslCmd.Process == nil {
+		return
+	}
+
+	writeLog("Stopping ReAI process...")
 	stopCmd := exec.Command("podman", "stop", containername)
 	stopCmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
-	err := stopCmd.Start()
+	err := stopCmd.Run()
 	if err != nil {
 		writeLog(fmt.Sprintf("Error stopping container: %v", err))
 	}
 
-	if wslCmd != nil && wslCmd.Process != nil {
-		writeLog("Stopping WSL process...")
-		err := wslCmd.Process.Kill()
-		if err != nil {
-			writeLog(fmt.Sprintf("Error killing WSL process: %v", err))
-		}
-		_, _ = wslCmd.Process.Wait()
-		wslCmd = nil
+	err = wslCmd.Process.Kill()
+	if err != nil {
+		writeLog(fmt.Sprintf("Error killing ReAI Process: %v", err))
 	}
+
+	_, err = wslCmd.Process.Wait()
+	if err != nil {
+		writeLog(fmt.Sprintf("Error waiting for ReAI process: %v", err))
+	}
+
+	wslCmd = nil
 }
 
 func writeLog(text string) {
@@ -208,9 +260,18 @@ func writeLog(text string) {
 	}
 	logMu.Lock()
 	defer logMu.Unlock()
-	fmt.Fprintln(logFile, text)
-	// Flush to disk after each write
-	logFile.Sync()
+	fmt.Fprintf(logFile, "[%s] %s\n", time.Now().Format(time.RFC3339), text)
+
+}
+
+func setRunning(value bool) bool {
+	stateMu.Lock()
+	defer stateMu.Unlock()
+	if isRunning == value {
+		return false
+	}
+	isRunning = value
+	return true
 }
 
 // ensureSingleInstance tries to create a named mutex. If it already exists,
