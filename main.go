@@ -33,6 +33,9 @@ var (
 const (
 	containername = "ReEnvisionAI"
 	container     = "pgawestjones/petals"
+	initial_peers = "/ip4/50.106.9.34/tcp/8788/p2p/QmXQMr1yy6sJ81QM6Rxxz3Zpnxw5rUVgZabxPHaVvH7gRG"
+	token         = "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"
+	model_name    = "meta-llama/Llama-3.3-70B-Instruct"
 	runcmd        = "python -m petals.cli.run_server --port 31330 --initial_peers /ip4/50.106.9.34/tcp/40975/p2p/Qmf3UsPjnzbNVs6CjHDfU6XUjMuukZ4drQTvvmaSZJqLLA meta-llama/Llama-3.3-70B-Instruct"
 )
 
@@ -137,6 +140,21 @@ func onExit() {
 	}
 }
 
+func setupPodman() bool {
+	cmd := exec.Command("podman", "machine", "ssh", "sudo nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml")
+	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+
+	ouptput, err := cmd.CombinedOutput()
+
+	writeLog(string(ouptput))
+	if err != nil {
+		writeLog(fmt.Sprintf("Failed to connect GPU to Podman: %v", err))
+		return false
+	}
+
+	return true
+}
+
 func waitForPodman() bool {
 	timeout := time.After(5 * time.Minute)
 	for {
@@ -165,11 +183,16 @@ func startWSLProcess() {
 		return
 	}
 
+	if !setupPodman() {
+		writeLog("Aborting start: Podman could not be setup properly")
+		return
+	}
+
 	port := "31330"
 	portmap := port + ":" + port
 	volume := "api-cache:/cache"
 
-	wslCmd = exec.Command("podman", "run", "-p", portmap, "--gpus", "all", "--volume", volume, "--rm", "--name", containername, container, "python", "-m", "petals.cli.run_server", "--inference_max_length", "128000", "--port", "31330", "--initial_peers", "'/ip4/50.106.9.34/tcp/40975/p2p/Qmf3UsPjnzbNVs6CjHDfU6XUjMuukZ4drQTvvmaSZJqLLA'", "meta-llama/Llama-3.3-70B-Instruct")
+	wslCmd = exec.Command("podman", "run", "-p", portmap, "--gpus", "all", "--volume", volume, "--rm", "--name", containername, container, "python", "-m", "petals.cli.run_server", "--inference_max_length", "128000", "--port", port, model_name, "--token", token, "--initial_peers", initial_peers)
 	// Hide the child console window (Windows only)
 	wslCmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
 
