@@ -32,11 +32,10 @@ var (
 
 const (
 	containername = "ReEnvisionAI"
-	container     = "pgawestjones/petals"
-	initial_peers = "/ip4/50.106.9.34/tcp/8788/p2p/QmXQMr1yy6sJ81QM6Rxxz3Zpnxw5rUVgZabxPHaVvH7gRG"
+	container     = "ghcr.io/reenvision-ai/petals:latest"
+	initial_peers = "/dns4/sociallyshaped.net/tcp/8788/p2p/QmTUpY86VSyvwvBN8oc9W3JztLaxyabT6b17gnXxdfx5HL"
 	token         = "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"
 	model_name    = "meta-llama/Llama-3.3-70B-Instruct"
-	runcmd        = "python -m petals.cli.run_server --port 31330 --initial_peers /ip4/50.106.9.34/tcp/40975/p2p/Qmf3UsPjnzbNVs6CjHDfU6XUjMuukZ4drQTvvmaSZJqLLA meta-llama/Llama-3.3-70B-Instruct"
 )
 
 func main() {
@@ -189,10 +188,9 @@ func startWSLProcess() {
 	}
 
 	port := "31330"
-	portmap := port + ":" + port
-	volume := "api-cache:/cache"
+	volume := "reai-cache:/cache"
 
-	wslCmd = exec.Command("podman", "run", "-p", portmap, "--gpus", "all", "--volume", volume, "--rm", "--name", containername, container, "python", "-m", "petals.cli.run_server", "--inference_max_length", "128000", "--port", port, model_name, "--token", token, "--initial_peers", initial_peers)
+	wslCmd = exec.Command("podman", "run", "--network", "host", "--privileged", "--ipc", "host", "--device", "nvidia.com/gpu=all", "--gpus", "all", "--volume", volume, "--rm", "--name", containername, container, "python", "-m", "petals.cli.run_server", "--inference_max_length", "136192", "--port", port, "--max_alloc_timeout", "6000", "--quant_type", "nf4", "--attn_cache_tokens", "128000", model_name, "--token", token, "--initial_peers", initial_peers)
 	// Hide the child console window (Windows only)
 	wslCmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
 
