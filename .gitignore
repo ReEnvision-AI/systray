@@ -8,6 +8,7 @@
 # Output of build tools
 *.out
 *.test
+Output/
 
 # Build and cache directories (for local development)
 bin/
