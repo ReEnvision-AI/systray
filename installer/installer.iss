@@ -8,10 +8,13 @@ AppCopyright=2025
 AppId={{6F22380A-0A5A-4705-A0ED-D1DBDF18484A}}
 DefaultDirName={autopf}\ReEnvision AI
 DefaultGroupName=ReEnvision AI
-OutputBaseFilename=ReEnvisionAISetup
+OutputBaseFilename=ReEnvision AI Setup
 Compression=lzma
 SolidCompression=yes
 PrivilegesRequired=admin
+ArchitecturesInstallIn64BitMode=x64compatible
+SetupIconFile=reai.ico
+SetupLogging=yes
 
 [Icons]
 Name: "{group}\ReEnvision AI"; Filename: "{app}\ReEnvisionAI.exe"; WorkingDir: "{app}"
@@ -20,69 +23,102 @@ Name: "{commonprograms}\ReEnvision AI"; Filename: "{app}\ReEnvisionAI.exe"; Work
 Name: "{commonstartmenu}\ReEnvision AI"; Filename: "{app}\ReEnvisionAI.exe"; WorkingDir: "{app}"
 Name: "{commonstartup}\ReEnvision AI"; Filename: "{app}\ReEnvisionAI.exe"; WorkingDir: "{app}"
 
-
-
 [Files]
-; Add MyApp.exe to the installation directory
 Source: "ReEnvisionAI.exe"; DestDir: "{app}"; Flags: ignoreversion
-; Include the Podman installer
-Source: "podman-5.3.2-setup.exe"; DestDir: "{tmp}"; Flags: deleteafterinstall
-; Include the Podman Setup Script
-Source: "podman_setup.bat"; DestDir: "{tmp}"; Flags: deleteafterinstall
+Source: "podman-5.4.1-setup.exe"; DestDir: "{tmp}"; Flags: deleteafterinstall
+Source: "podman_setup.bat"; DestDir: "{app}"; Flags: ignoreversion
 
 [Run]
-; Silent installation of Podman after ensuring WSL is installed
-Filename: "{tmp}\podman-5.3.2-setup.exe"; Parameters: "WSLCheckbox=1 /SILENT"; Flags: shellexec runhidden
+Filename: "{tmp}\podman-5.4.1-setup.exe"; Parameters: "/quiet"; Flags: shellexec  waituntilterminated; StatusMsg: "Installing Podman, please wait..."
+Filename: "netsh"; Parameters: "advfirewall firewall delete rule name=""ReEnvision AI"""; Flags:  waituntilterminated
+Filename: "netsh"; Parameters: "advfirewall firewall add rule name=""ReEnvision AI"" dir=in action=allow protocol=TCP localport=31330"; Flags:  waituntilterminated; StatusMsg: "Setting up firewall rule, please wait..."
+
+Filename: "powershell"; Parameters: "-NoProfile -ExecutionPolicy Bypass -Command ""wsl --install --no-distribution"""; Check: NeedsWSLInstall; Flags: waituntilterminated; StatusMsg: "Setting up Windows Subsystem for Linux, please wait..."
 
 
+[Registry]
+Root: HKLM; Subkey: "SOFTWARE\Microsoft\Windows\CurrentVersion\RunOnce"; ValueType: string; ValueName: "ReEnvisionAI_Setup"; ValueData: "cmd.exe /c ""{app}\podman_setup.bat"""; Flags: uninsdeletevalue
 
-Filename: "{tmp}\podman_setup.bat"; Flags: shellexec runhidden
+
+[UninstallRun]
+Filename: "netsh"; Parameters: "advfirewall firewall delete rule name=""ReEnvision AI"""; Flags: waituntilterminated; RunOnceId: "DeleteReEnvisionAIFirewallRule"
 
 [Code]
-function IsWSLInstalled(): Boolean;
 var
-  ResultCode: Integer;
+  WSLInstalled: Boolean;
+
+function CheckVirtualizationEnabled(): Boolean;
+var
+  TempFile: String;
+  Lines: TArrayOfString;
+  I: Integer;
+  Line: String;
 begin
-  Result := Exec('powershell.exe', '-Command "wsl --list"', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) and (ResultCode = 0);
+  TempFile := ExpandConstant('{tmp}\systeminfo.txt');
+  if Exec('cmd.exe', '/c systeminfo > "' + TempFile + '"', '', SW_HIDE, ewWaitUntilTerminated, I) then
+  begin
+    if LoadStringsFromFile(TempFile, Lines) then
+    begin
+      for I := 0 to GetArrayLength(Lines) - 1 do
+      begin
+        Line := Trim(Lines[I]);
+        if (Pos('A hypervisor has been detected', Line) > 0) or
+           (Pos('Virtualization Enabled In Firmware: Yes', Line) > 0) then
+        begin
+          Result := True;
+          Exit;
+        end
+        else if Pos('Virtualization Enabled In Firmware: No', Line) > 0 then
+        begin
+          Result := False;
+          Exit;
+        end;
+      end;
+    end;
+  end;
+  Result := False; // Default to false if check fails
 end;
 
-function EnableWSL(): Boolean;
+function IsWSLEnabled(): Boolean;
 var
   ResultCode: Integer;
 begin
-  Result := Exec('powershell.exe', '-Command "Enable-WindowsOptionalFeature -FeatureName Microsoft-Windows-Subsystem-Linux -Online -NoRestart"', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) and (ResultCode = 0);
+  if Exec('powershell.exe', '-Command "$feature = Get-WindowsOptionalFeature -Online -FeatureName Microsoft-Windows-Subsystem-Linux; if ($feature.State -eq ''Enabled'') { exit 0 } else { exit 1 }"', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
+  begin
+    Result := (ResultCode = 0);
+  end
+  else
+  begin
+    Result := False;
+  end;
 end;
 
-function InstallWSL(): Boolean;
-var
-  ResultCode: Integer;
+function NeedsWSLInstall(): Boolean;
 begin
-  Result := Exec('powershell.exe', '-Command "wsl --install --no-distribution"', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) and (ResultCode = 0);
+  if not IsWSLEnabled then
+  begin
+    WSLInstalled := True;
+    Result := True;
+  end
+  else
+  begin
+    WSLInstalled := False;
+    Result := False;
+  end;
 end;
+
+
 
 function InitializeSetup(): Boolean;
 begin
-  Result := True;
-
-  if not IsWSLInstalled() then
+  if not CheckVirtualizationEnabled then
   begin
-    MsgBox('Windows Subsystem for Linux (WSL) is required. It will now be installed.', mbInformation, MB_OK);
-    if not EnableWSL() then
-    begin
-      MsgBox('Failed to enable WSL. Please enable manually and try again.', mbError, MB_OK);
-      Result := False;
-      Exit;
-    end;
-    if not InstallWSL() then
-    begin
-      Result := False;
-      MsgBox('Failed to install WSL. Please install it manually and try again.', mbError, MB_OK);
-      Exit;
-    end
-    else
-    begin
-      MsgBox('WSL has been installed successfully. Please restart your computer before continuing.', mbInformation, MB_OK);
-      Result := False; // Ensure the user restarts the system before proceeding
-    end;
+    MsgBox('CPU Virtualization is not enabled in the BIOS. Please consult your motherboard manual on how to enable it.', mbError, MB_OK)
+    Result := False;
+  end
+  else
+  begin
+    Result := True;
   end;
 end;
+
