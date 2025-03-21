@@ -32,7 +32,7 @@ Name: "{commonstartup}\ReEnvision AI"; Filename: "{app}\ReEnvisionAI.exe"; Worki
 Source: "ReEnvisionAI.exe"; DestDir: "{app}"; Flags: ignoreversion signonce
 Source: "podman-5.4.1-setup.exe"; DestDir: "{tmp}"; Flags: deleteafterinstall
 Source: "podman_setup.bat"; DestDir: "{app}"; Flags: ignoreversion
-Source: "podman_setup.ps1"; DestDir: "{app}"; Flags: ignoreversion
+Source: "podman_setup.ps1"; DestDir: "{app}"; Flags: ignoreversion signonce
 
 [Run]
 Filename: "{tmp}\podman-5.4.1-setup.exe"; Parameters: "/quiet"; Flags: shellexec  waituntilterminated; StatusMsg: "Installing Podman, please wait..."; BeforeInstall: SetMarqueeProgress(True)
@@ -42,9 +42,10 @@ Filename: "DISM"; Parameters: "/Online /Enable-Feature /FeatureName:Microsoft-Wi
 Filename: "DISM"; Parameters: "/Online /Enable-Feature /FeatureName:VirtualMachinePlatform /All /norestart"; Check: NeedsVMPlatformEnable; Flags: waituntilterminated; StatusMsg: "Enabling Virtual Machine Platform, please wait..."; AfterInstall: SetNeedsReboot
 
 Filename: "netsh"; Parameters: "advfirewall firewall delete rule name=""ReEnvision AI"""; Flags:  waituntilterminated
-Filename: "netsh"; Parameters: "advfirewall firewall add rule name=""ReEnvision AI"" dir=in action=allow protocol=TCP localport=31330"; Flags:  waituntilterminated; StatusMsg: "Setting up firewall rule, please wait..."; AfterInstall: SetMarqueeProgress(False)
+Filename: "netsh"; Parameters: "advfirewall firewall add rule name=""ReEnvision AI"" dir=in action=allow protocol=TCP localport={code:GetPort}"; Flags:  waituntilterminated; StatusMsg: "Setting up firewall rule, please wait..."; AfterInstall: SetMarqueeProgress(False)
 
 [Registry]
+Root: HKLM; Subkey: "SOFTWARE\ReEnvisionAI\ReEnvisionAI"; ValueType: dword; ValueName: "Port"; ValueData: "{code:GetPort}"; Flags: uninsdeletekey
 Root: HKLM; Subkey: "SOFTWARE\Microsoft\Windows\CurrentVersion\RunOnce"; ValueType: string; ValueName: "ReEnvisionAI_Setup"; ValueData: "cmd.exe /c ""{app}\podman_setup.bat"""; Flags: uninsdeletevalue
 
 
@@ -55,6 +56,7 @@ Filename: "netsh"; Parameters: "advfirewall firewall delete rule name=""ReEnvisi
 var
   WSLInstalled: Boolean;
   NeedsReboot: Boolean;
+  RandomPort: Integer;
   
 procedure SetMarqueeProgress(Marquee: Boolean);
 begin
@@ -152,6 +154,11 @@ begin
   Result := (ResultCode <> 0);
 end;
 
+function GetPort(Param: String): String;
+begin
+  Result := IntToStr(RandomPort);
+end;
+
 procedure SetNeedsReboot;
 begin
   NeedsReboot := True;
@@ -168,6 +175,8 @@ end;
 
 function InitializeSetup(): Boolean;
 begin
+  RandomPort := 31330 + Random(52000 - 31330 + 1);
+
   if not CheckVirtualizationEnabled then
   begin
     MsgBox('CPU Virtualization is not enabled in the BIOS. Please consult your motherboard manual on how to enable it.', mbError, MB_OK)

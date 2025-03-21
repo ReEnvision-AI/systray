@@ -1,1 +1,1 @@
-PowerShell .\podman_setup.ps1 >> "%TEMP%\PodmanSetupLog.txt" 2>&1
+PowerShell -ExecutionPolicy Bypass -File "%PROGRAMFILES%\ReEnvision AI\podman_setup.ps1" >> "%TEMP%\PodmanSetupLog.txt" 2>&1
