@@ -9,12 +9,14 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"sync"
 	"syscall"
 	"time"
 
 	"github.com/getlantern/systray"
 	"golang.org/x/sys/windows"
+	"golang.org/x/sys/windows/registry"
 )
 
 //go:embed reai.ico
@@ -29,6 +31,7 @@ var (
 	isRunning   bool
 	startMenu   *systray.MenuItem
 	stopMenu    *systray.MenuItem
+	port        uint64
 )
 
 const (
@@ -79,6 +82,23 @@ func main() {
 		fmt.Printf("Failed to open log file (%s): %v\n", logFilePath, err)
 		// If file open fails, fallback to standard out (or handle error gracefully)
 		logFile = os.Stdout
+	}
+
+	keyPath := `SOFTWARE\ReEnvisionAI\ReEnvisionAI`
+	hive := registry.LOCAL_MACHINE
+
+	k, err := registry.OpenKey(hive, keyPath, registry.QUERY_VALUE)
+	if err != nil {
+		writeLog("Failed to retrieve port from Windows registry, setting to default")
+		port = 31330
+	} else {
+		port, _, err = k.GetIntegerValue("Port")
+		if err != nil {
+			writeLog("Error reading port from Windows registry, setting to default")
+			port = 31330
+		} else {
+			writeLog(fmt.Sprintf("Setting port to %d", port))
+		}
 	}
 
 	// 3. Start the system tray
@@ -219,10 +239,10 @@ func startWSLProcess() {
 		return
 	}
 
-	port := "31330"
+	// port = 31330
 	volume := "reai-cache:/cache"
 
-	wslCmd = exec.Command("podman", "run", "--network", "host", "--privileged", "--ipc", "host", "--device", "nvidia.com/gpu=all", "--gpus", "all", "--volume", volume, "--rm", "--name", containername, container, "python", "-m", "petals.cli.run_server", "--inference_max_length", "136192", "--port", port, "--max_alloc_timeout", "6000", "--quant_type", "nf4", "--attn_cache_tokens", "128000", model_name, "--token", token, "--initial_peers", initial_peers)
+	wslCmd = exec.Command("podman", "run", "--network", "host", "--privileged", "--ipc", "host", "--device", "nvidia.com/gpu=all", "--gpus", "all", "--volume", volume, "--rm", "--name", containername, container, "python", "-m", "petals.cli.run_server", "--inference_max_length", "136192", "--port", strconv.FormatUint(port, 10), "--max_alloc_timeout", "6000", "--quant_type", "nf4", "--attn_cache_tokens", "128000", model_name, "--token", token, "--initial_peers", initial_peers)
 	// Hide the child console window (Windows only)
 	wslCmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
 
