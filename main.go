@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"sync"
 	"syscall"
 	"time"
@@ -140,6 +141,17 @@ func onExit() {
 }
 
 func setupPodman() bool {
+	// Check for Nvidia GPU before running nvidia-ctk
+	hasNvididaGPU, err := checkNvidiaGPU()
+	if err != nil {
+		writeLog(fmt.Sprintf("Error checking for Nvidia GPU: %v", err))
+		//return false
+	}
+	if !hasNvididaGPU {
+		writeLog("Nvidia GPU not found, skipping nvidia-ctk setup.")
+		return true // Not an error, just a skip
+	}
+
 	cmd := exec.Command("podman", "machine", "ssh", "sudo nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml")
 	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
 
@@ -154,7 +166,27 @@ func setupPodman() bool {
 	return true
 }
 
+func checkNvidiaGPU() (bool, error) {
+	if runtime.GOOS != "windows" {
+		return false, fmt.Errorf("nvidia-smi is only available on Windows with Nvidia driver")
+	}
+
+	cmd := exec.Command("nvidia-smi", "--list-gpus")
+	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return false, err
+	}
+
+	return len(output) > 0, nil
+}
+
 func waitForPodman() bool {
+	start_cmd := exec.Command("podman", "machine", "start")
+	start_cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+	start_cmd.Run()
+
 	timeout := time.After(5 * time.Minute)
 	for {
 		select {
