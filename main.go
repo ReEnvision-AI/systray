@@ -42,6 +42,20 @@ const (
 	model_name    = "meta-llama/Llama-3.3-70B-Instruct"
 )
 
+// Constants for windows sleep
+const (
+	esAwaymodeRequired = 0x00000040
+	esContinuous       = 0x80000000
+	esDisplayRequired  = 0x00000002
+	esSystemRequired   = 0x00000001
+)
+
+// Variables for windows sleep
+var (
+	kernel32, _                = syscall.LoadLibrary("kernel32.dll")
+	setThreadExecutionState, _ = syscall.GetProcAddress(kernel32, "SetThreadExecutionState")
+)
+
 func main() {
 	mutexName := "Local\\ReEnvisionAIMutex"
 
@@ -100,6 +114,13 @@ func main() {
 			writeLog(fmt.Sprintf("Setting port to %d", port))
 		}
 	}
+
+	err = keepAwake()
+	if err != nil {
+		writeLog("Error preventing sleep")
+	}
+
+	defer allowSleep()
 
 	// 3. Start the system tray
 	systray.Run(onReady, onExit)
@@ -257,6 +278,8 @@ func startWSLProcess() {
 		return
 	}
 
+	keepAwake()
+
 	if err := wslCmd.Start(); err != nil {
 		writeLog(fmt.Sprintf("Error starting WSL command: %v", err))
 		stopMenu.Disable()
@@ -325,6 +348,8 @@ func stopWSLProcess() {
 	}
 
 	wslCmd = nil
+
+	allowSleep()
 }
 
 func writeLog(text string) {
@@ -365,4 +390,20 @@ func ensureSingleInstance(mutexName string) (bool, error) {
 
 	// Otherwise, no existing instance, and we hold the mutex until the process exits.
 	return true, nil
+}
+
+func keepAwake() error {
+	r1, _, err := syscall.SyscallN(uintptr(setThreadExecutionState), 1, uintptr(esContinuous|esSystemRequired), 0, 0)
+	if r1 == 0 {
+		return err
+	}
+	return nil
+}
+
+func allowSleep() error {
+	r1, _, err := syscall.SyscallN(uintptr(setThreadExecutionState), 1, uintptr(esContinuous), 0, 0)
+	if r1 == 0 {
+		return err
+	}
+	return nil
 }
