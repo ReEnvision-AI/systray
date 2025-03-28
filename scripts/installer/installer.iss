@@ -20,6 +20,7 @@ SignedUninstaller=yes
 SetupMutex=Global\ReEnvisionSetupMutex
 SignTool=MsSign $f
 DirExistsWarning=no
+UsedUserAreasWarning=no
 
 [Icons]
 Name: "{group}\ReEnvision AI"; Filename: "{app}\ReEnvisionAI.exe"; WorkingDir: "{app}"
@@ -33,10 +34,12 @@ Source: "ReEnvisionAI.exe"; DestDir: "{app}"; Flags: ignoreversion signonce
 Source: "podman-5.4.1-setup.exe"; DestDir: "{tmp}"; Flags: deleteafterinstall
 Source: "podman_setup.bat"; DestDir: "{app}"; Flags: ignoreversion
 Source: "podman_setup.ps1"; DestDir: "{app}"; Flags: ignoreversion signonce
+Source: "config.json"; DestDir: "{localappdata}\ReEnvisionAI\"; Flags: ignoreversion
 
 [Run]
 Filename: "{tmp}\podman-5.4.1-setup.exe"; Parameters: "/quiet"; Flags: shellexec  waituntilterminated; StatusMsg: "Installing Podman, please wait..."; BeforeInstall: SetMarqueeProgress(True)
 
+Filename: "{cmd}"; Parameters: "/c cmdkey /generic:ReEnvisionAI/hf_token /user:reai /pass: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"; Flags: runhidden shellexec waituntilterminated
 
 Filename: "DISM"; Parameters: "/Online /Enable-Feature /FeatureName:Microsoft-Windows-Subsystem-Linux /All /norestart"; Check: NeedsWSLEnable; Flags: waituntilterminated; StatusMsg: "Enabling Windows Subsystem for Linux, please wait..."; AfterInstall: SetNeedsReboot
 Filename: "DISM"; Parameters: "/Online /Enable-Feature /FeatureName:VirtualMachinePlatform /All /norestart"; Check: NeedsVMPlatformEnable; Flags: waituntilterminated; StatusMsg: "Enabling Virtual Machine Platform, please wait..."; AfterInstall: SetNeedsReboot

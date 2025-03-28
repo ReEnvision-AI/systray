@@ -35,14 +35,14 @@ If you wish to build the ReEnvision AI application from its source code, follow 
 3.  **Build the Application:** Run the following command to build the executable:
 
     ```bash
-    go build -ldflags "-H=windowsgui" -o installer/ReEnvisionAI.exe
+    go build -ldflags "-H=windowsgui" -o scripts/installer/ReEnvisionAI.exe .\cmd\reenvisionai\
     ```
 
     * `go build`: This is the command to build Go programs.
     * `-ldflags "-H=windowsgui"`: This linker flag is specific to Windows and tells the linker to create a GUI application, which will run without a console window.
-    * `-o installer/ReEnvisionAI.exe`: This specifies the output file name and location. The executable will be named `ReEnvisionAI.exe` and placed in a subdirectory named `installer`. 
+    * `-o scripts/installer/ReEnvisionAI.exe`: This specifies the output file name and location. The executable will be named `ReEnvisionAI.exe` and placed in a subdirectory named `installer` under `scripts`. 
 
-4.  **Locate the Executable:** Once the build process is complete, the `ReEnvisionAI.exe` file will be located in the `installer` directory within your project.
+4.  **Locate the Executable:** Once the build process is complete, the `ReEnvisionAI.exe` file will be located in the `scripts\installer` directory within your project.
 
 ### Running the Executable
 
