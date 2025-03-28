@@ -4,5 +4,7 @@
   "initial_peers": "/dns4/sociallyshaped.net/tcp/8788/p2p/QmTUpY86VSyvwvBN8oc9W3JztLaxyabT6b17gnXxdfx5HL",
   "model_name": "meta-llama/Llama-3.3-70B-Instruct",
   "default_port": 31330,
-  "use_gpu": true
+  "use_gpu": true,
+  "supabaseUrl": "https://gmeujceuwsdpsvcpytnv.supabase.co",
+  "supabaseAnonKey": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdtZXVqY2V1d3NkcHN2Y3B5dG52Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzAyNDE3MzUsImV4cCI6MjA0NTgxNzczNX0.Sewmt744-ZbU-Ww4KIamIdldLULw1DrSbJkdlayhS5g"
 }

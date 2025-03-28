@@ -16,13 +16,15 @@ import (
 
 // AppConfig struct holds values loaded from config.json and Windows Credential Manager.
 type AppConfig struct {
-	ContainerName  string `json:"container_name"`
-	ContainerImage string `json:"container_image"`
-	InitialPeers   string `json:"initial_peers"`
-	ModelName      string `json:"model_name"`
-	DefaultPort    uint64 `json:"default_port"`
-	UseGPU         bool   `json:"use_gpu"`
-	Token          string // Loaded separately from Credential Manager
+	ContainerName   string `json:"container_name"`
+	ContainerImage  string `json:"container_image"`
+	InitialPeers    string `json:"initial_peers"`
+	ModelName       string `json:"model_name"`
+	DefaultPort     uint64 `json:"default_port"`
+	UseGPU          bool   `json:"use_gpu"`
+	SupabaseURL     string `json:"supabaseUrl"`
+	SupabaseAnonKey string `json:"supabaseAnonKey"`
+	Token           string // Loaded separately from Credential Manager
 }
 
 // LoadConfig reads the configuration file from the given path, parses it,
