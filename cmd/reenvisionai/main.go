@@ -57,7 +57,7 @@ const (
 
 // Supabase constants
 const (
-	secretKey            = "a9c1f75a2bd6cf9e1d5a7f2ce0d4b17f"
+	a                    = "a9c1f75a2bd6cf9e1d5a7f2ce0d4b17f"
 	credentialTargetName = "ReEnvisionAI/credentials"
 	maxLoginAttempts     = 5
 )
@@ -187,7 +187,7 @@ func main() {
 	}
 
 	var decryptErr error
-	appConfig.SupabaseAnonKey, decryptErr = decrypt(appConfig.SupabaseAnonKey, secretKey)
+	appConfig.SupabaseAnonKey, decryptErr = decrypt(appConfig.SupabaseAnonKey, a)
 	if decryptErr != nil {
 		slog.Error("Error decrypting supabase api key", "error", decryptErr)
 		os.Exit(1)
