@@ -22,7 +22,6 @@ import (
 	"sync"
 	"syscall"
 	"time"
-	"unsafe"
 
 	"github.com/ReEnvision-AI/systray/internal/config"
 	"github.com/ReEnvision-AI/systray/internal/logging"
@@ -110,37 +109,6 @@ var (
 	cancelCmd    context.CancelFunc // Function to cancel the currentCmd context
 )
 
-// Win32 API imports for CredUIPromptForCredentials and MessageBox
-var (
-	moduser32               = windows.NewLazySystemDLL("user32.dll")
-	procMessageBoxW         = moduser32.NewProc("MessageBoxW")
-	procGetForegroundWindow = moduser32.NewProc("GetForegroundWindow")
-)
-
-const (
-	// CredUIPromptForCredentials Flags
-	CREDUI_FLAGS_GENERIC_CREDENTIALS    = 0x1
-	CREDUI_FLAGS_ALWAYS_SHOW_UI         = 0x20
-	CREDUI_FLAGS_DO_NOT_PERSIST         = 0x8
-	CREDUI_FLAGS_VALIDATION_BY_CREDSPEC = 0x4
-	CREDUI_FLAGS_REQUEST_ADMINISTRATOR  = 0x100
-	CREDUI_FLAGS_REQUIRE_SMARTCARD      = 0x40
-	CREDUI_FLAGS_EXCLUDE_CERTIFICATES   = 0x2
-	CREDUI_FLAGS_ONLY_SHOW_ERROR        = 0x10 // Not used here, but useful
-
-	// MessageBox Flags
-	MB_OK          = 0x00000000
-	MB_ICONERROR   = 0x00000010
-	MB_ICONWARNING = 0x00000030
-	MB_TOPMOST     = 0x00040000 // Ensure message box is visible
-
-	// Error codes
-	ERROR_SUCCESS               syscall.Errno = 0
-	ERROR_CANCELLED             syscall.Errno = 1223
-	ERROR_NO_SUCH_LOGON_SESSION syscall.Errno = 1312 // Often indicates auth failure during CredUI validation
-	ERROR_INVALID_PASSWORD      syscall.Errno = 86   // May occur if creds invalid during CredUI validation
-)
-
 func main() {
 	var err error
 	instanceMtx, err = ensureSingleInstance(mutexName)
@@ -162,7 +130,7 @@ func main() {
 	// Initialize Logging (Must happen early)
 	if err := logging.Init(); err != nil {
 		// Log to console if file logging fails
-		showErrorMessage("Logging Error", fmt.Sprintf("Logging initialization failed: %v. Logs may go to console only.", err), MB_ICONWARNING)
+		showErrorMessage("Logging Error", fmt.Sprintf("Logging initialization failed: %v. Logs may go to console only.", err))
 		fmt.Printf("Logging initialization failed: %v. Logs may go to console only.\n", err)
 	}
 	defer logging.Close() // Ensure logs are flushed
@@ -172,7 +140,7 @@ func main() {
 	// Load Configuration
 	if err := loadAppConfig(); err != nil {
 		slog.Error("FATAL: Initialization failed", "error", err)
-		showErrorMessage("Configuration Error", fmt.Sprintf("Failed to load configuration: %v", err), MB_ICONERROR)
+		showErrorMessage("Configuration Error", fmt.Sprintf("Failed to load configuration: %v", err))
 		os.Exit(1)
 	}
 
@@ -182,7 +150,7 @@ func main() {
 	// Validate essential config needed early
 	if appConfig.SupabaseURL == "" || appConfig.SupabaseAnonKey == "" {
 		slog.Error("FATAL: Initialization failed - Supabase URL or Anon Key missing in config")
-		showErrorMessage("Configuration Error", "Supabase URL or Anon Key missing in configuration.", MB_ICONERROR)
+		showErrorMessage("Configuration Error", "Supabase URL or Anon Key missing in configuration.")
 		os.Exit(1)
 	}
 
@@ -895,24 +863,11 @@ func ensureSingleInstance(name string) (windows.Handle, error) {
 }
 
 // showErrorMessage displays a native Windows message box.
-func showErrorMessage(title, message string, flags uintptr) {
+func showErrorMessage(title, message string) {
 	slog.Debug("Showing message box", "title", title, "message", message)
-	titlePtr, _ := windows.UTF16PtrFromString(title)
-	messagePtr, _ := windows.UTF16PtrFromString(message)
-	hwnd, _, _ := procGetForegroundWindow.Call()
-
-	// Asynchronously show the message box to avoid potential deadlocks if called from certain contexts
-	go func() {
-		_, _, err := procMessageBoxW.Call(
-			hwnd, // Parent window handle (can be 0)
-			uintptr(unsafe.Pointer(messagePtr)),
-			uintptr(unsafe.Pointer(titlePtr)),
-			flags|MB_TOPMOST, // Ensure it's visible
-		)
-		if err != nil && !errors.Is(err, ERROR_SUCCESS) { // ERROR_SUCCESS is technically not nil
-			slog.Error("Failed to display MessageBoxW", "error", err)
-		}
-	}()
+	zenity.Error(message,
+		zenity.Title(title),
+		zenity.ErrorIcon)
 }
 
 func decrypt(encryptedText, key string) (string, error) {
