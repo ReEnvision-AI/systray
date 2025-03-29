@@ -10,6 +10,20 @@ require (
 )
 
 require (
+	github.com/akavel/rsrc v0.10.2 // indirect
+	github.com/dchest/jsmin v0.0.0-20220218165748-59f39799265f // indirect
+	github.com/google/uuid v1.6.0 // indirect
+	github.com/josephspurrier/goversioninfo v1.4.1 // indirect
+	github.com/randall77/makefat v0.0.0-20210315173500-7ddd0e42c844 // indirect
+	github.com/supabase-community/functions-go v0.0.0-20220927045802-22373e6cb51d // indirect
+	github.com/supabase-community/gotrue-go v1.2.0 // indirect
+	github.com/supabase-community/postgrest-go v0.0.11 // indirect
+	github.com/supabase-community/storage-go v0.7.0 // indirect
+	github.com/tomnomnom/linkheader v0.0.0-20180905144013-02ca5825eb80 // indirect
+	golang.org/x/image v0.20.0 // indirect
+)
+
+require (
 	github.com/getlantern/context v0.0.0-20190109183933-c447772a6520 // indirect
 	github.com/getlantern/errors v0.0.0-20190325191628-abdb3e3e36f7 // indirect
 	github.com/getlantern/golog v0.0.0-20190830074920-4ef2e798c2d7 // indirect
@@ -18,6 +32,8 @@ require (
 	github.com/getlantern/ops v0.0.0-20190325191751-d70cb0d6f85f // indirect
 	github.com/go-stack/stack v1.8.0 // indirect
 	github.com/gonutz/w32/v2 v2.11.1
+	github.com/ncruces/zenity v0.10.14
 	github.com/oxtoacart/bpool v0.0.0-20190530202638-03653db5a59c // indirect
+	github.com/supabase-community/supabase-go v0.0.4
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1
 )

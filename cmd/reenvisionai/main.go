@@ -5,15 +5,20 @@ package main
 import (
 	"bufio"
 	"context"
+	"crypto/aes"
+	"crypto/cipher"
 	_ "embed"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -26,6 +31,10 @@ import (
 	"github.com/getlantern/systray"
 	"golang.org/x/sys/windows"
 	"golang.org/x/sys/windows/registry"
+
+	"github.com/danieljoos/wincred"
+	"github.com/ncruces/zenity"
+	supa "github.com/supabase-community/supabase-go"
 )
 
 //go:embed reai.ico
@@ -44,6 +53,13 @@ const (
 	podmanMachineStartTimeout = 5 * time.Minute
 	podmanInfoPollInterval    = 5 * time.Second
 	podmanStopTimeout         = 30 * time.Second
+)
+
+// Supabase constants
+const (
+	secretKey            = "a9c1f75a2bd6cf9e1d5a7f2ce0d4b17f"
+	credentialTargetName = "ReEnvisionAI/credentials"
+	maxLoginAttempts     = 5
 )
 
 // Application states
@@ -167,6 +183,86 @@ func main() {
 	if appConfig.SupabaseURL == "" || appConfig.SupabaseAnonKey == "" {
 		slog.Error("FATAL: Initialization failed - Supabase URL or Anon Key missing in config")
 		showErrorMessage("Configuration Error", "Supabase URL or Anon Key missing in configuration.", MB_ICONERROR)
+		os.Exit(1)
+	}
+
+	var decryptErr error
+	appConfig.SupabaseAnonKey, decryptErr = decrypt(appConfig.SupabaseAnonKey, secretKey)
+	if decryptErr != nil {
+		slog.Error("Error decrypting supabase api key", "error", decryptErr)
+		os.Exit(1)
+	}
+
+	// Initialize Supabase client
+	client, err := supa.NewClient(appConfig.SupabaseURL, appConfig.SupabaseAnonKey, nil)
+	if err != nil {
+		log.Fatalf("Error initializing Supabase client: %v\n", err)
+	}
+
+	slog.Info("Checking stored credentials")
+	cred, err := loadCredentialsFromWCM(credentialTargetName)
+	loginSuccess := false
+
+	if err == nil && cred != nil {
+		fmt.Printf("Found stored credentials for user: %s\n", cred.UserName)
+		fmt.Println("Attempting login with stored credentials...")
+		err = authenticateWithSupabase(client, cred.UserName, string(cred.CredentialBlob))
+		if err == nil {
+			slog.Info("Login successful using stored credentials!")
+			loginSuccess = true
+		} else {
+			slog.Warn("Login with stored credentials failed", "error", err)
+			errDel := cred.Delete()
+			if errDel != nil {
+				slog.Warn("Warning: Failed to delete outdated credential from WCM", "error", errDel)
+			} else {
+				slog.Info("Removed outdated credentials from Windows Credential Manager")
+			}
+		}
+	} else if errors.Is(err, wincred.ErrElementNotFound) {
+		slog.Info("No stored credentials found")
+		// Proceed to manual login
+	} else if err != nil {
+		// Handle other WCM errors (permissions, etc.)
+		slog.Warn("Error accessing Windows Credential Manager", "err", err)
+		slog.Info("Proceeding without stored credentials")
+		// Proceed to manual login
+	}
+
+	if !loginSuccess {
+		var enteredEmail, enteredPassword string
+		for attempt := 1; attempt <= maxLoginAttempts; attempt++ {
+			fmt.Printf("\n--- Login Attempt %d of %d ---\n", attempt, maxLoginAttempts)
+			enteredEmail, enteredPassword, err = promptForCredentials()
+			if err != nil {
+				log.Fatalf("Error getting credentials from user: %v\n", err) // Fatal error if we can't read input
+			}
+
+			fmt.Println("Attempting login...")
+			err = authenticateWithSupabase(client, enteredEmail, enteredPassword)
+			if err == nil {
+				slog.Info("Login successful")
+				loginSuccess = true
+
+				// Save successful credentials to WCM
+				slog.Info("Saving credentials to Windows Credential Manager...")
+				errSave := saveCredentialsToWCM(credentialTargetName, enteredEmail, enteredPassword)
+				if errSave != nil {
+					slog.Warn("Failed to save credentials", "error", errSave)
+				} else {
+					slog.Info("Credentials saved successfully")
+				}
+				break // Exit loop on success
+			} else {
+				slog.Warn("Login failed", "error", err)
+				if attempt == maxLoginAttempts {
+					slog.Info("Maximum login attempts reached. Exiting")
+				}
+			}
+		}
+	}
+
+	if !loginSuccess {
 		os.Exit(1)
 	}
 
@@ -817,4 +913,84 @@ func showErrorMessage(title, message string, flags uintptr) {
 			slog.Error("Failed to display MessageBoxW", "error", err)
 		}
 	}()
+}
+
+func decrypt(encryptedText, key string) (string, error) {
+	cipherText, err := base64.StdEncoding.DecodeString(encryptedText)
+	if err != nil {
+		return "", err
+	}
+	block, err := aes.NewCipher([]byte(key))
+	if err != nil {
+		return "", err
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return "", err
+	}
+	nonceSize := gcm.NonceSize()
+	if len(cipherText) < nonceSize {
+		return "", fmt.Errorf("cipherText too short")
+	}
+	nonce, cipherText := cipherText[:nonceSize], cipherText[nonceSize:]
+	plainText, err := gcm.Open(nil, nonce, cipherText, nil)
+	if err != nil {
+		return "", err
+	}
+	return string(plainText), nil
+}
+
+func loadCredentialsFromWCM(targetName string) (*wincred.GenericCredential, error) {
+	cred, err := wincred.GetGenericCredential(targetName)
+	if err != nil {
+		return nil, fmt.Errorf("WCM GetGenericCredential error: %w", err) // Wrap error for better context
+	}
+	if cred == nil {
+		// Should not happen if err is nil, but good practice to check
+		return nil, wincred.ErrElementNotFound
+	}
+	return cred, nil
+}
+
+func authenticateWithSupabase(client *supa.Client, email, password string) error {
+	fmt.Printf("Logging in with %s / %s \n", email, password)
+	session, err := client.SignInWithEmailPassword(email, password)
+
+	if err != nil {
+		return fmt.Errorf("supabase sign-in error: %w", err) // Wrap error
+	}
+
+	client.EnableTokenAutoRefresh(session)
+
+	return nil // Success
+}
+
+func promptForCredentials() (email string, password string, err error) {
+	username, password, err := zenity.Password(
+		zenity.Title("Type your username (email) and password"),
+		zenity.Username(),
+		zenity.Modal(),
+		zenity.NoCancel())
+
+	username = strings.TrimSpace(username)
+	password = strings.TrimSpace(password)
+
+	if username == "" || password == "" {
+		err = errors.New("username and password can't be empty")
+	}
+
+	return username, password, err
+}
+
+func saveCredentialsToWCM(targetName, username, password string) error {
+	cred := wincred.NewGenericCredential(targetName)
+	cred.UserName = username
+	cred.CredentialBlob = []byte(password) // Store password as bytes
+	cred.Persist = wincred.PersistLocalMachine
+
+	err := cred.Write()
+	if err != nil {
+		return fmt.Errorf("WCM Write error: %w", err) // Wrap error
+	}
+	return nil
 }
