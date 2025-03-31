@@ -54,6 +54,14 @@ const (
 	podmanStopTimeout         = 30 * time.Second
 )
 
+// Heartbeat Constants
+const (
+	heatbeatInterval    = 5 * time.Minute
+	heartbeatTableName  = "heartbeats"
+	heartbeatColumnName = "last_heartbeat"
+	heartbeatUserIDCol  = "id"
+)
+
 // Supabase constants
 const (
 	a                    = "a9c1f75a2bd6cf9e1d5a7f2ce0d4b17f"
@@ -107,6 +115,13 @@ var (
 	currentState AppState           = StateStopped
 	currentCmd   *exec.Cmd          // Holds the running podman command
 	cancelCmd    context.CancelFunc // Function to cancel the currentCmd context
+
+	// Waitgroup to ensure background tasks like heartbeat finish
+	appWg sync.WaitGroup
+
+	// Context for controlling background goroutines like heartbeat
+	appCtx       context.Context
+	cancelAppCtx context.CancelFunc
 )
 
 func main() {
@@ -160,6 +175,8 @@ func main() {
 		slog.Error("Error decrypting supabase api key", "error", decryptErr)
 		os.Exit(1)
 	}
+
+	appCtx, cancelAppCtx = context.WithCancel(context.Background())
 
 	// Initialize Supabase client
 	client, err := supa.NewClient(appConfig.SupabaseURL, appConfig.SupabaseAnonKey, nil)
@@ -234,8 +251,53 @@ func main() {
 		os.Exit(1)
 	}
 
+	var userID string
+
+	usr, err := client.Auth.GetUser()
+	if err != nil {
+		slog.Error("Failed to retrieve user info after successful login", "error", err)
+		cancelAppCtx()
+		os.Exit(1)
+	}
+
+	if usr == nil {
+		slog.Error("User info is empty after successful login")
+		cancelAppCtx()
+		os.Exit(1)
+	}
+
+	userID = usr.ID.String()
+	if userID != "" {
+		appWg.Add(1)
+		go func() {
+			defer appWg.Done()
+			runHeartBeat(appCtx, client, userID, heatbeatInterval)
+		}()
+	} else {
+		slog.Warn("Skipping heartbeat start because User ID is empty")
+	}
+
 	// Start the systray application
 	systray.Run(onReady, onExit)
+
+	slog.Info("Systray finished, ensuring all background tasks stopped")
+	cancelAppCtx()
+
+	slog.Info("Waiting for background tasks to stop...")
+	waitChan := make(chan struct{})
+	go func() {
+		appWg.Wait()
+		close(waitChan)
+	}()
+
+	select {
+	case <-waitChan:
+		slog.Info("All background tasks finished")
+	case <-time.After(30 * time.Second):
+		slog.Warn("Timeout waiting for background tasks to stop")
+	}
+
+	slog.Info("Application exit\n\n")
 }
 
 func loadAppConfig() error {
@@ -915,6 +977,7 @@ func authenticateWithSupabase(client *supa.Client, email, password string) error
 		return fmt.Errorf("supabase sign-in error: %w", err) // Wrap error
 	}
 
+	client.UpdateAuthSession(session)
 	client.EnableTokenAutoRefresh(session)
 
 	return nil // Success
@@ -948,4 +1011,51 @@ func saveCredentialsToWCM(targetName, username, password string) error {
 		return fmt.Errorf("WCM Write error: %w", err) // Wrap error
 	}
 	return nil
+}
+
+func runHeartBeat(ctx context.Context, client *supa.Client, userID string, interval time.Duration) {
+	if client == nil {
+		slog.Error("Heartbeat: DB client is nil, cannot run heartbeat")
+		return
+	}
+
+	if userID == "" {
+		slog.Error("Heartbeat: User ID is empty, cannot run heartbeat")
+		return
+	}
+
+	slog.Info("Starting heartbeat tickert", "interval", interval)
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	sendHeartBeatUpdate(client, userID)
+
+	for {
+		select {
+		case <-ticker.C:
+			slog.Debug("Heartbeat ticker received")
+			sendHeartBeatUpdate(client, userID)
+
+		case <-ctx.Done():
+			slog.Info("Heartbeat context cancelled, stopping heartbeat")
+			return
+		}
+	}
+}
+
+func sendHeartBeatUpdate(client *supa.Client, userID string) {
+	currentTime := time.Now().UTC() // Using UTC for consistency
+	updateData := map[string]interface{}{
+		heartbeatUserIDCol:  userID,
+		heartbeatColumnName: currentTime,
+	}
+
+	var result []map[string]interface{}
+	_, err := client.From(heartbeatTableName).Upsert(updateData, "", "", "").ExecuteTo(&result)
+
+	if err != nil {
+		slog.Error("Heartbeat update failed", "error", err, "userID", userID)
+	} else {
+		slog.Debug("Heartbeat sent successfully", "time", currentTime)
+	}
 }
