@@ -102,6 +102,7 @@ var (
 	appConfig   config.AppConfig
 	port        uint64
 	instanceMtx windows.Handle // Handle for the single instance mutex
+	email       string
 
 	// UI Elements (managed by systray goroutine)
 	mStatus *systray.MenuItem
@@ -265,6 +266,8 @@ func main() {
 		cancelAppCtx()
 		os.Exit(1)
 	}
+
+	email = usr.Email
 
 	userID = usr.ID.String()
 	if userID != "" {
@@ -689,6 +692,15 @@ func buildPodmanRunCommandArgs() []string {
 		"--initial_peers", appConfig.InitialPeers,
 	)
 
+	if email != "" {
+		obfuscatedEmail, err := obfuscateEmail(email)
+		if err != nil {
+			slog.Warn("Error trying to obfuscate the user's email", "error", err)
+		} else {
+			args = append(args, "--public_name", obfuscatedEmail)
+		}
+	}
+
 	return args
 }
 
@@ -1058,4 +1070,70 @@ func sendHeartBeatUpdate(client *supa.Client, userID string) {
 	} else {
 		slog.Debug("Heartbeat sent successfully", "time", currentTime)
 	}
+}
+
+// ObfuscateEmail takes an email string and returns an obfuscated version
+// according to the specified rules:
+// - First letter of the username
+// - Asterisks (*) for characters between the first and last of the username
+// - Last letter of the username
+// - The "@" symbol
+// - First letter of the domain
+// - Four asterisks ("****")
+// - The domain extension (including the dot, e.g., ".com", ".org")
+// Returns the obfuscated email and an error if the input format is invalid.
+func obfuscateEmail(email string) (string, error) {
+	// 1. Find the '@' symbol to split username and domain
+	parts := strings.SplitN(email, "@", 2)
+	if len(parts) != 2 || len(parts[0]) == 0 || len(parts[1]) == 0 {
+		return "", errors.New("invalid email format: missing '@' or empty username/domain")
+	}
+	username := parts[0]
+	domain := parts[1]
+
+	// 2. Obfuscate the username part
+	var obfuscatedUsername strings.Builder
+	usernameLen := len(username)
+
+	if usernameLen == 0 {
+		// This case is already handled by the initial check, but included for clarity
+		return "", errors.New("invalid email format: empty username")
+	}
+
+	// Add the first letter
+	obfuscatedUsername.WriteByte(username[0]) // Assuming ASCII/single-byte first char
+
+	// Add asterisks if username length > 1
+	if usernameLen > 2 {
+		// Add len - 2 asterisks
+		obfuscatedUsername.WriteString(strings.Repeat("*", usernameLen-2))
+	}
+
+	// Add the last letter if username length > 1
+	if usernameLen > 1 {
+		obfuscatedUsername.WriteByte(username[len(username)-1]) // Assuming ASCII/single-byte last char
+	}
+	// If usernameLen is 1, only the first letter is added, which is correct.
+
+	// 3. Obfuscate the domain part
+	// Find the last '.' to identify the extension
+	dotIndex := strings.LastIndex(domain, ".")
+	// Ensure domain has at least one char before the dot and the dot exists
+	if dotIndex <= 0 || dotIndex == len(domain)-1 {
+		return "", errors.New("invalid email format: domain requires a '.' separating name and extension")
+	}
+
+	var obfuscatedDomain strings.Builder
+
+	// Add the first letter of the domain
+	obfuscatedDomain.WriteByte(domain[0]) // Assuming ASCII/single-byte first char
+
+	// Add four asterisks
+	obfuscatedDomain.WriteString("****")
+
+	// Add the extension (including the dot)
+	obfuscatedDomain.WriteString(domain[dotIndex:])
+
+	// 4. Combine the parts
+	return obfuscatedUsername.String() + "@" + obfuscatedDomain.String(), nil
 }
