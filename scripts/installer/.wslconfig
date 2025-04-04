@@ -1,0 +1,10 @@
+[wsl2]
+# Limits VM memory to use no more than 8 GB
+memory=8GB
+
+# Enables page reporting so WSL releases allocated memory 
+pageReporting=true
+
+[experimental]
+# Automatically release cached memory after detecting idle CPU usage
+autoMemoryReclaim=dropCache

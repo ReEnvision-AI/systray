@@ -35,6 +35,7 @@ Source: "podman-5.4.1-setup.exe"; DestDir: "{tmp}"; Flags: deleteafterinstall
 Source: "podman_setup.bat"; DestDir: "{app}"; Flags: ignoreversion
 Source: "podman_setup.ps1"; DestDir: "{app}"; Flags: ignoreversion signonce
 Source: "config.json"; DestDir: "{localappdata}\ReEnvisionAI\"; Flags: ignoreversion
+Source: ".wslconfig"; DestDir: "{%USERPROFILE}"; Flags: ignoreversion
 
 [Run]
 Filename: "{tmp}\podman-5.4.1-setup.exe"; Parameters: "/quiet"; Flags: shellexec  waituntilterminated; StatusMsg: "Installing Podman, please wait..."; BeforeInstall: SetMarqueeProgress(True)
