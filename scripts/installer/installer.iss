@@ -1,15 +1,15 @@
 [Setup]
 ; Basic setup information
 AppName=ReEnvision AI
-AppVersion=1.0.0
+AppVersion=1.0.2
 AppVerName=ReEnvision AI
-AppPublisher=ReEnvision AI
+AppPublisher=ReEnvision AI, LLC
 AppPublisherURL=https://reenvision.ai
 AppCopyright=2025
 AppId={{6F22380A-0A5A-4705-A0ED-D1DBDF18484A}}
 DefaultDirName={autopf}\ReEnvision AI
 DefaultGroupName=ReEnvision AI
-OutputBaseFilename=ReEnvision AI Setup
+OutputBaseFilename=ReEnvisionAISetup
 Compression=lzma
 SolidCompression=yes
 PrivilegesRequired=admin
@@ -33,17 +33,21 @@ Name: "{commonstartup}\ReEnvision AI"; Filename: "{app}\ReEnvisionAI.exe"; Worki
 Source: "ReEnvisionAI.exe"; DestDir: "{app}"; Flags: ignoreversion signonce
 Source: "podman-5.4.1-setup.exe"; DestDir: "{tmp}"; Flags: deleteafterinstall
 Source: "podman_setup.bat"; DestDir: "{app}"; Flags: ignoreversion
-Source: "podman_setup.ps1"; DestDir: "{app}"; Flags: ignoreversion signonce
+//Source: "podman_setup.ps1"; DestDir: "{app}"; Flags: ignoreversion signonce
+Source: "wsl_install.ps1"; DestDir: "{tmp}"; Flags: ignoreversion deleteafterinstall
+Source: "post_wsl_install.ps1"; DestDir: "{app}"; Flags: ignoreversion signonce
 Source: "config.json"; DestDir: "{localappdata}\ReEnvisionAI\"; Flags: ignoreversion
 Source: ".wslconfig"; DestDir: "{%USERPROFILE}"; Flags: ignoreversion
 
 [Run]
+Filename: "Powershell.exe"; Parameters: "-ExecutionPolicy Bypass -File '{tmp}\wsl_install.ps1'"; Flags: shellexec waituntilterminated; StatusMsg: "Installing Windows Subsystem for Linux, please wait.."; AfterInstall: SetNeedsReboot
+
 Filename: "{tmp}\podman-5.4.1-setup.exe"; Parameters: "/quiet"; Flags: shellexec  waituntilterminated; StatusMsg: "Installing Podman, please wait..."; BeforeInstall: SetMarqueeProgress(True)
 
 Filename: "{cmd}"; Parameters: "/c cmdkey /generic:ReEnvisionAI/hf_token /user:reai /pass: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"; Flags: runhidden shellexec waituntilterminated
 
-Filename: "DISM"; Parameters: "/Online /Enable-Feature /FeatureName:Microsoft-Windows-Subsystem-Linux /All /norestart"; Check: NeedsWSLEnable; Flags: waituntilterminated; StatusMsg: "Enabling Windows Subsystem for Linux, please wait..."; AfterInstall: SetNeedsReboot
-Filename: "DISM"; Parameters: "/Online /Enable-Feature /FeatureName:VirtualMachinePlatform /All /norestart"; Check: NeedsVMPlatformEnable; Flags: waituntilterminated; StatusMsg: "Enabling Virtual Machine Platform, please wait..."; AfterInstall: SetNeedsReboot
+//Filename: "DISM"; Parameters: "/Online /Enable-Feature /FeatureName:Microsoft-Windows-Subsystem-Linux /All /norestart"; Check: NeedsWSLEnable; Flags: waituntilterminated; StatusMsg: "Enabling Windows Subsystem for Linux, please wait..."; AfterInstall: SetNeedsReboot
+//Filename: "DISM"; Parameters: "/Online /Enable-Feature /FeatureName:VirtualMachinePlatform /All /norestart"; Check: NeedsVMPlatformEnable; Flags: waituntilterminated; StatusMsg: "Enabling Virtual Machine Platform, please wait..."; AfterInstall: SetNeedsReboot
 
 Filename: "netsh"; Parameters: "advfirewall firewall delete rule name=""ReEnvision AI"""; Flags:  waituntilterminated
 Filename: "netsh"; Parameters: "advfirewall firewall add rule name=""ReEnvision AI"" dir=in action=allow protocol=TCP localport={code:GetPort}"; Flags:  waituntilterminated; StatusMsg: "Setting up firewall rule, please wait..."; AfterInstall: SetMarqueeProgress(False)
@@ -58,7 +62,6 @@ Filename: "netsh"; Parameters: "advfirewall firewall delete rule name=""ReEnvisi
 
 [Code]
 var
-  WSLInstalled: Boolean;
   NeedsReboot: Boolean;
   RandomPort: Integer;
   
@@ -106,56 +109,10 @@ begin
   Result := False; // Default to false if check fails
 end;
 
-function IsWSLEnabled(): Boolean;
-var
-  ResultCode: Integer;
-begin
-  if Exec('powershell.exe', '-Command "$feature = Get-WindowsOptionalFeature -Online -FeatureName Microsoft-Windows-Subsystem-Linux; if ($feature.State -eq ''Enabled'') { exit 0 } else { exit 1 }"', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
-  begin
-    Result := (ResultCode = 0);
-  end
-  else
-  begin
-    Result := False;
-  end;
-end;
-
-function NeedsWSLInstall(): Boolean;
-begin
-  if not IsWSLEnabled then
-  begin
-    WSLInstalled := True;
-    Result := True;
-  end
-  else
-  begin
-    WSLInstalled := False;
-    Result := False;
-  end;
-end;
-
 
 procedure InitializeWizard;
 begin
   NeedsReboot := False;
-end;
-
-function NeedsWSLEnable: Boolean;
-var
-  ResultCode: Integer;
-begin
-  Exec('powershell.exe', '-NoProfile -ExecutionPolicy Bypass -Command "if ((Get-WindowsOptionalFeature -Online -FeatureName Microsoft-Windows-Subsystem-Linux).State -eq ''Enabled'') { exit 0 } else { exit 1 }"',
-       '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
-  Result := (ResultCode <> 0);
-end;
-
-function NeedsVMPlatformEnable: Boolean;
-var
-  ResultCode: Integer;
-begin
-  Exec('powershell.exe', '-NoProfile -ExecutionPolicy Bypass -Command "if ((Get-WindowsOptionalFeature -Online -FeatureName VirtualMachinePlatform).State -eq ''Enabled'') { exit 0 } else { exit 1 }"',
-       '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
-  Result := (ResultCode <> 0);
 end;
 
 function GetPort(Param: String): String;
