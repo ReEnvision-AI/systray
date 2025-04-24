@@ -1,0 +1,10 @@
+{
+  "container_name": "ReEnvisionAI",
+  "container_image": "ghcr.io/reenvision-ai/petals:2.3.2",
+  "initial_peers": "/dns4/sociallyshaped.net/tcp/8788/p2p/QmTUpY86VSyvwvBN8oc9W3JztLaxyabT6b17gnXxdfx5HL",
+  "model_name": "meta-llama/Llama-3.3-70B-Instruct",
+  "default_port": 31330,
+  "use_gpu": true,
+  "supabaseUrl": "https://gmeujceuwsdpsvcpytnv.supabase.co",
+  "supabaseAnonKey": "SC07W0x1p7FmSK2xVSLWMOw/8EqJLv9fBAVclMq5NJOixipCUf4QO3wrPtrQVM8eyjzcpZM3iKD/LXErVFcotC9FKpnHEo+SEvAD1cfgcqZszbCPEBsyctL7jd6HFC73MDo/NG2rkemcxXM7OkWWUlgWYvb6F9/8H/bZoGOloIdiyV2zMAPY7OyTxkGmDBNnEIqaEOj2HkiU1DNrPzeqZ2JsWAfJf5qbQwd7oxcDnytrFHHsPpl3dc+iGRcROY3NJNORRZWIPjdCF8u4Cx93E9aNXKw9DV+/AWQ/a0dMWdlGsg/W4icZgv0mKW0="
+}
