@@ -2,7 +2,6 @@ package lifecycle
 
 import (
 	"errors"
-	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -11,10 +10,9 @@ import (
 )
 
 var (
-	AppName    = "ReEnvisionAI"
-	AppDir     = "/opt/reai"
-	AppDataDir = "/opt/reai"
-	// TODO - should there be a distinct log dir?
+	AppName          = "ReEnvisionAI"
+	AppDir           = "/opt/reai"
+	AppDataDir       = "/opt/reai"
 	UpdateStageDir   = "/tmp"
 	AppLogFile       = "/tmp/reai_app.log"
 	UpgradeLogFile   = "/tmp/reai_update.log"
@@ -25,11 +23,13 @@ var (
 func init() {
 	if runtime.GOOS == "windows" {
 		AppName += ".exe"
-		// Logs, configs, downloads go to LOCALAPPDATA
 		localAppData := os.Getenv("LOCALAPPDATA")
-		fmt.Println("localAppData", localAppData)
+		if localAppData == "" {
+			slog.Error("LOCALAPPDATA environment variable not set")
+			// Handle error appropriately, maybe fall back to a default
+			return
+		}
 		AppDataDir = filepath.Join(localAppData, "ReEnvision AI")
-		fmt.Println("AppDataDir", AppDataDir)
 		UpdateStageDir = filepath.Join(AppDataDir, "updates")
 		AppLogFile = filepath.Join(AppDataDir, "app.log")
 		UpgradeLogFile = filepath.Join(AppDataDir, "upgrade.log")
@@ -41,10 +41,17 @@ func init() {
 		} else {
 			AppDir = filepath.Dir(exe)
 		}
+		slog.Debug("Application paths initialized",
+			"AppName", AppName,
+			"AppDir", AppDir,
+			"AppDataDir", AppDataDir,
+			"UpdateStageDir", UpdateStageDir,
+			"AppLogFile", AppLogFile,
+			"UpgradeLogFile", UpgradeLogFile,
+		)
 
 		// Make sure we have PATH set correctly for any spawned children
 		paths := strings.Split(os.Getenv("PATH"), ";")
-		// Start with whatever we find in the PATH/LD_LIBRARY_PATH
 		found := false
 		for _, path := range paths {
 			d, err := filepath.Abs(path)
@@ -53,24 +60,22 @@ func init() {
 			}
 			if strings.EqualFold(AppDir, d) {
 				found = true
+				break
 			}
 		}
 		if !found {
-			paths = append(paths, AppDir)
-
-			pathVal := strings.Join(paths, ";")
-			slog.Debug("setting PATH=" + pathVal)
-			err := os.Setenv("PATH", pathVal)
-			if err != nil {
-				slog.Error(fmt.Sprintf("failed to update PATH: %s", err))
+			newPath := strings.Join(append(paths, AppDir), ";")
+			slog.Debug("Updating PATH", "newPath", newPath)
+			if err := os.Setenv("PATH", newPath); err != nil {
+				slog.Error("failed to update PATH", "error", err)
 			}
 		}
 
 		// Make sure our logging dir exists
-		_, err = os.Stat(AppDataDir)
-		if errors.Is(err, os.ErrNotExist) {
+		if _, err := os.Stat(AppDataDir); errors.Is(err, os.ErrNotExist) {
+			slog.Info("Creating application data directory", "path", AppDataDir)
 			if err := os.MkdirAll(AppDataDir, 0o755); err != nil {
-				slog.Error(fmt.Sprintf("create reai dir %s: %v", AppDataDir, err))
+				slog.Error("failed to create application data directory", "path", AppDataDir, "error", err)
 			}
 		}
 	}

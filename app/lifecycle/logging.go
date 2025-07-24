@@ -1,7 +1,6 @@
 package lifecycle
 
 import (
-	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -9,20 +8,20 @@ import (
 	"strings"
 )
 
+var logFile *os.File
+
 func InitLogging() {
 	level := slog.LevelInfo
 
-	var logFile *os.File
 	var err error
 
 	rotateLogs(AppLogFile)
 	logFile, err = os.OpenFile(AppLogFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0755)
-	fmt.Println("logFile", logFile)
 	if err != nil {
-		slog.Error(fmt.Sprintf("failed to create log %v", err))
+		slog.Error("failed to create log", "error", err)
 		return
 	}
-	//defer logFile.Close()
+	// logFile is closed on shutdown by CloseLogging
 	handler := slog.NewTextHandler(logFile, &slog.HandlerOptions{
 		Level:     level,
 		AddSource: true,
@@ -39,6 +38,12 @@ func InitLogging() {
 
 	slog.Info("ReEnvision AI logging starting")
 
+}
+
+func CloseLogging() {
+	if logFile != nil {
+		logFile.Close()
+	}
 }
 
 func rotateLogs(logFile string) {

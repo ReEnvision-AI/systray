@@ -3,7 +3,6 @@ package lifecycle
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log"
 	"log/slog"
 	"os"
@@ -85,7 +84,7 @@ func Run() {
 			case <-callbacks.Update:
 				err := DoUpgrade(updaterCancel, updaterDone)
 				if err != nil {
-					slog.Warn(fmt.Sprintf("upgrade attempt failed: %s", err))
+					slog.Warn("upgrade attempt failed", "error", err)
 				}
 			case <-callbacks.ShowLogs:
 				ShowLogs()
@@ -100,7 +99,7 @@ func Run() {
 			case <-callbacks.DoFirstUse:
 				err := GetStarted()
 				if err != nil {
-					slog.Warn(fmt.Sprintf("Failed to launch getting started shell: %s", err))
+					slog.Warn("Failed to launch getting started shell", "error", err)
 				}
 			}
 		}
@@ -111,7 +110,7 @@ func Run() {
 		slog.Debug("First time run")
 		err = t.DisplayFirstUseNotification()
 		if err != nil {
-			slog.Debug(fmt.Sprintf("XXX failed to display first use notification %v", err))
+			slog.Debug("failed to display first use notification", "error", err)
 		}
 		store.SetFirstTimeRun(true)
 	} else {
@@ -131,6 +130,7 @@ func Run() {
 	}
 
 	slog.Info("ReEnvision AI app exiting")
+	CloseLogging()
 }
 
 func SetState(newState AppState) {
@@ -161,7 +161,7 @@ func handleStartRequest() {
 
 	err := StartContainer(ctx)
 	if err != nil {
-		slog.Error(fmt.Sprintf("Failed to start container: %s", err))
+		slog.Error("Failed to start container", "error", err)
 		SetState(StateError)
 		return
 	}

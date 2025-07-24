@@ -29,11 +29,11 @@ var (
 )
 
 func StartContainer(ctx context.Context) error {
-	var error error
-	appConfig, error = LoadConfig()
-	if error != nil {
-		slog.Error("Failed to load configuration", "error", error)
-		return nil
+	var err error
+	appConfig, err = LoadConfig()
+	if err != nil {
+		slog.Error("Failed to load configuration", "error", err)
+		return err
 	}
 
 	// Wait for Podman Service
@@ -213,6 +213,8 @@ func buildPodmanRunCommandArgs() []string {
 		"--rm",           // Remove container on exit
 		"--name=" + appConfig.ContainerName,
 		"--volume=" + podmanVolumeName, // Mount cache volume
+		"--pull=newer",                 // Pulls newer image even if same version
+		"-e AGENT_GRID_VERSION=1.3.1",
 	}
 
 	// GPU arguments - Use CDI if available, requires Podman >= 4.x
@@ -235,7 +237,7 @@ func buildPodmanRunCommandArgs() []string {
 	// Add image and command parts
 	args = append(args, appConfig.ContainerImage) // The image name
 	args = append(args,                           // The command and its arguments within the container
-		"python", "-m", "petals.cli.run_server",
+		"python", "-m", "agentgrid.cli.run_server",
 		"--inference_max_length", "136192",
 		"--port", strconv.FormatUint(Port, 10),
 		"--max_alloc_timeout", "6000",
@@ -243,6 +245,7 @@ func buildPodmanRunCommandArgs() []string {
 		"--attn_cache_tokens", "128000",
 		appConfig.ModelName,
 		"--token", appConfig.Token,
+		"--throughput", "eval",
 		//"--initial_peers", appConfig.InitialPeers,
 	)
 

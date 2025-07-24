@@ -171,7 +171,7 @@ func (t *winTray) initInstance() error {
 
 	boolRet, _, err := pUpdateWindow.Call(uintptr(t.window))
 	if boolRet == 0 {
-		slog.Error(fmt.Sprintf("failed to update window: %s", err))
+		slog.Error("failed to update window", "error", err)
 	}
 
 	t.muNID.Lock()

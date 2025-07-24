@@ -28,7 +28,7 @@ func GetStarted() error {
 		return fmt.Errorf("getting started banner script error %s", err)
 	}
 
-	slog.Info(fmt.Sprintf("opening getting started terminal with %v", args))
+	slog.Info("opening getting started terminal", "args", args)
 	attrs := &os.ProcAttr{
 		Files: []*os.File{os.Stdin, os.Stdout, os.Stderr},
 		Sys:   &syscall.SysProcAttr{CreationFlags: CREATE_NEW_CONSOLE, HideWindow: false},
@@ -38,6 +38,6 @@ func GetStarted() error {
 		return fmt.Errorf("unable to start getting started shell %w", err)
 	}
 
-	slog.Debug(fmt.Sprintf("getting started terminal PID: %d", proc.Pid))
+	slog.Debug("getting started terminal started", "pid", proc.Pid)
 	return proc.Release()
 }

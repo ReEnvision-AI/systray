@@ -22,9 +22,9 @@ import (
 )
 
 var (
-	UpdateCheckURLBase  = "https://sociallyshapet.net/api/update"
+	UpdateCheckURLBase  = "https://sociallyshaped.net/api/update"
 	UpdateDownloaded    = false
-	UpdateCheckInterval = 60 * 60 * time.Second
+	UpdateCheckInterval = 24 * time.Hour
 )
 
 type UpdateResponse struct {
@@ -62,7 +62,7 @@ func IsNewReleaseAvailable(ctx context.Context) (bool, UpdateResponse) {
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, requestURL.String(), nil)
 	if err != nil {
-		slog.Warn(fmt.Sprintf("failed to check for update: %s", err))
+		slog.Warn("failed to check for update", "error", err)
 		return false, updateResp
 	}
 	//req.Header.Set("Authorization", signature)
@@ -71,7 +71,7 @@ func IsNewReleaseAvailable(ctx context.Context) (bool, UpdateResponse) {
 	slog.Debug("checking for available update", "requestURL", requestURL)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		slog.Warn(fmt.Sprintf("failed to check for update: %s", err))
+		slog.Warn("failed to check for update", "error", err)
 		return false, updateResp
 	}
 	defer resp.Body.Close()
@@ -82,16 +82,16 @@ func IsNewReleaseAvailable(ctx context.Context) (bool, UpdateResponse) {
 	}
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		slog.Warn(fmt.Sprintf("failed to read body response: %s", err))
+		slog.Warn("failed to read body response", "error", err)
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		slog.Info(fmt.Sprintf("check update error %d - %.96s", resp.StatusCode, string(body)))
+		slog.Info("check update error", "status_code", resp.StatusCode, "body", string(body))
 		return false, updateResp
 	}
 	err = json.Unmarshal(body, &updateResp)
 	if err != nil {
-		slog.Warn(fmt.Sprintf("malformed response checking for update: %s", err))
+		slog.Warn("malformed response checking for update", "error", err)
 		return false, updateResp
 	}
 	// Extract the version string from the URL in the github release artifact path
@@ -159,17 +159,18 @@ func DownloadNewRelease(ctx context.Context, updateResp UpdateResponse) error {
 		}
 	}
 
-	payload, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return fmt.Errorf("failed to read body response: %w", err)
-	}
 	fp, err := os.OpenFile(stageFilename, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o755)
 	if err != nil {
-		return fmt.Errorf("write payload %s: %w", stageFilename, err)
+		return fmt.Errorf("failed to create update file %s: %w", stageFilename, err)
 	}
 	defer fp.Close()
-	if n, err := fp.Write(payload); err != nil || n != len(payload) {
-		return fmt.Errorf("write payload %s: %d vs %d -- %w", stageFilename, n, len(payload), err)
+
+	// Stream the download directly to the file
+	_, err = io.Copy(fp, resp.Body)
+	if err != nil {
+		// Clean up partially downloaded file on error
+		os.Remove(stageFilename)
+		return fmt.Errorf("failed to write update to %s: %w", stageFilename, err)
 	}
 	slog.Info("new update downloaded " + stageFilename)
 
@@ -183,7 +184,7 @@ func cleanupOldDownloads() {
 		// Expected behavior on first run
 		return
 	} else if err != nil {
-		slog.Warn(fmt.Sprintf("failed to list stage dir: %s", err))
+		slog.Warn("failed to list stage dir", "error", err)
 		return
 	}
 	for _, file := range files {
@@ -191,7 +192,7 @@ func cleanupOldDownloads() {
 		slog.Debug("cleaning up old download: " + fullname)
 		err = os.RemoveAll(fullname)
 		if err != nil {
-			slog.Warn(fmt.Sprintf("failed to cleanup stale update download %s", err))
+			slog.Warn("failed to cleanup stale update download", "error", err)
 		}
 	}
 }
@@ -199,19 +200,18 @@ func cleanupOldDownloads() {
 func StartBackgroundUpdaterChecker(ctx context.Context, cb func(string) error) {
 	go func() {
 		// Don't blast an update message immediately after startup
-		// time.Sleep(30 * time.Second)
-		time.Sleep(3 * time.Second)
+		time.Sleep(30 * time.Second)
 
 		for {
 			available, resp := IsNewReleaseAvailable(ctx)
 			if available {
 				err := DownloadNewRelease(ctx, resp)
 				if err != nil {
-					slog.Error(fmt.Sprintf("failed to download new release: %s", err))
+					slog.Error("failed to download new release", "error", err)
 				}
 				err = cb(resp.UpdateVersion)
 				if err != nil {
-					slog.Warn(fmt.Sprintf("failed to register update available with tray: %s", err))
+					slog.Warn("failed to register update available with tray", "error", err)
 				}
 			}
 			select {

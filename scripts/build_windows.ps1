@@ -74,6 +74,11 @@ function buildInstaller() {
     exit($LASTEXITCODE)
   }
   write-host "ReEnvision AI Installer built successfully"
+  write-host "Calculating SHA256 checksum"
+  $installerPath = "${script:SRC_DIR}\dist\ReEnvisionAISetup.exe"
+  $checksum = (Get-FileHash -Algorithm SHA256 -Path $installerPath).Hash
+  Out-File -FilePath "${installerPath}.sha256" -InputObject $checksum
+  write-host "SHA256 checksum saved to ${installerPath}.sha256"
 }
 
 buildsetup

@@ -75,9 +75,9 @@ Source: "..\dist\windows\podman-5.4.1-setup.exe"; DestDir: "{tmp}"; Flags: delet
 Source: "..\dist\windows\config.json"; DestDir: "{localappdata}\ReEnvisionAI\"; Flags: ignoreversion
 Source: "..\dist\windows\.wslconfig"; DestDir: "{%USERPROFILE}"; Flags: ignoreversion
 Source: "..\dist\windows\reai_welcome.ps1"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\dist\windows\wsl_install.ps1"; DestDir: "{tmp}"; Flags: ignoreversion deleteafterinstall; Check: NotAnUpdate
-Source: "..\dist\windows\post_wsl_install.ps1"; DestDir: "{app}"; Flags: ignoreversion signonce; Check: NotAnUpdate
-Source: "..\dist\windows\podman_setup.bat"; DestDir: "{app}"; Flags: ignoreversion; Check: NotAnUpdate
+Source: "..\dist\windows\wsl_install.ps1"; DestDir: "{tmp}"; Attribs: hidden; Flags: signonce ignoreversion deleteafterinstall; Check: NotAnUpdate
+Source: "..\dist\windows\post_wsl_install.ps1"; DestDir: "{app}"; Attribs: hidden; Permissions: users-modify; Flags: ignoreversion signonce; Check: NotAnUpdate
+Source: "..\dist\windows\podman_setup.bat"; DestDir: "{app}"; Attribs: hidden; Flags: ignoreversion; Check: NotAnUpdate
 
 
 

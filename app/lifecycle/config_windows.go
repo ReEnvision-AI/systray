@@ -141,7 +141,7 @@ func loadAppConfig(filePath string) (AppConfig, error) {
 	}
 
 	cfg.Token = string(apiTokenBytesUTF8)
-	slog.Debug(fmt.Sprintf("DEBUG: Successfully loaded and decoded token (starts with: %s***)", cfg.Token[:min(len(cfg.Token), 4)]))
+	slog.Debug("Successfully loaded and decoded token")
 
 	return cfg, nil
 }

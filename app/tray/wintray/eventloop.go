@@ -100,16 +100,16 @@ func (t *winTray) wndProc(hWnd windows.Handle, message uint32, wParam, lParam ui
 				slog.Error("no listener on StopContainer")
 			}
 		default:
-			slog.Debug(fmt.Sprintf("Unexpected menu item id: %d", menuItemId))
+			slog.Debug("Unexpected menu item id", "id", menuItemId)
 		}
 	case WM_CLOSE:
 		boolRet, _, err := pDestroyWindow.Call(uintptr(t.window))
 		if boolRet == 0 {
-			slog.Error(fmt.Sprintf("failed to destroy window: %s", err))
+			slog.Error("failed to destroy window", "error", err)
 		}
 		err = t.wcex.unregister()
 		if err != nil {
-			slog.Error(fmt.Sprintf("failed to unregister window %s", err))
+			slog.Error("failed to unregister window", "error", err)
 		}
 	case WM_DESTROY:
 		// same as WM_ENDSESSION, but throws 0 exit code after all
@@ -120,7 +120,7 @@ func (t *winTray) wndProc(hWnd windows.Handle, message uint32, wParam, lParam ui
 		if t.nid != nil {
 			err := t.nid.delete()
 			if err != nil {
-				slog.Error(fmt.Sprintf("failed to delete nid: %s", err))
+				slog.Error("failed to delete nid", "error", err)
 			}
 		}
 		t.muNID.Unlock()
@@ -131,7 +131,7 @@ func (t *winTray) wndProc(hWnd windows.Handle, message uint32, wParam, lParam ui
 		case WM_RBUTTONUP, WM_LBUTTONUP:
 			err := t.showMenu()
 			if err != nil {
-				slog.Error(fmt.Sprintf("failed to show menu: %s", err))
+				slog.Error("failed to show menu", "error", err)
 			}
 		case 0x405: // TODO - how is this magic value derived for the notification left click
 			if t.pendingUpdate {
@@ -153,13 +153,13 @@ func (t *winTray) wndProc(hWnd windows.Handle, message uint32, wParam, lParam ui
 			// slog.Debug("doing nothing on close of first time notification")
 		default:
 			// 0x402 also seems common - what is it?
-			slog.Debug(fmt.Sprintf("unmanaged app message, lParm: 0x%x", lParam))
+			slog.Debug("unmanaged app message", "lParam", fmt.Sprintf("0x%x", lParam))
 		}
 	case t.wmTaskbarCreated: // on explorer.exe restarts
 		t.muNID.Lock()
 		err := t.nid.add()
 		if err != nil {
-			slog.Error(fmt.Sprintf("failed to refresh the taskbar on explorer restart: %s", err))
+			slog.Error("failed to refresh the taskbar on explorer restart", "error", err)
 		}
 		t.muNID.Unlock()
 	default:
@@ -187,6 +187,6 @@ func quit() {
 		0,
 	)
 	if boolRet == 0 {
-		slog.Error(fmt.Sprintf("failed to post close message on shutdown %s", err))
+		slog.Error("failed to post close message on shutdown", "error", err)
 	}
 }

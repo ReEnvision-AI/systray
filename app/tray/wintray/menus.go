@@ -93,7 +93,7 @@ func (t *winTray) UpdateAvailable(ver string) error {
 }
 
 func (t *winTray) ChangeStatusText(text string) error {
-	if err := t.addOrUpdateMenuItem(statusMenuID, 0, fmt.Sprintf("Status: %s", text), true); err != nil {
+	if err := t.addOrUpdateMenuItem(statusMenuID, 0, "Status: "+text, true); err != nil {
 		return fmt.Errorf("unable to create menu entries %w", err)
 	}
 	return nil

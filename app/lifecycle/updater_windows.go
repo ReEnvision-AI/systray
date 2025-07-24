@@ -19,7 +19,7 @@ func DoUpgrade(cancel context.CancelFunc, done chan int) error {
 		return errors.New("no update downloads found")
 	} else if len(files) > 1 {
 		// Shouldn't happen
-		slog.Warn(fmt.Sprintf("multiple downloads found, using first one %v", files))
+		slog.Warn("multiple downloads found, using first one", "files", files)
 	}
 	installerExe := files[0]
 	slog.Info("starting upgrade with " + installerExe)
@@ -43,7 +43,7 @@ func DoUpgrade(cancel context.CancelFunc, done chan int) error {
 		slog.Warn("done chan was nil, not actually waiting")
 	}
 
-	slog.Debug(fmt.Sprintf("starting installer: %s %v", installerExe, installArgs))
+	slog.Debug("starting installer", "installer", installerExe, "args", installArgs)
 	os.Chdir(filepath.Dir(UpgradeLogFile)) //nolint:errcheck
 	cmd := exec.Command(installerExe, installArgs...)
 
@@ -54,7 +54,7 @@ func DoUpgrade(cancel context.CancelFunc, done chan int) error {
 	if cmd.Process != nil {
 		err = cmd.Process.Release()
 		if err != nil {
-			slog.Error(fmt.Sprintf("failed to release server process: %s", err))
+			slog.Error("failed to release server process", "error", err)
 		}
 	} else {
 		return errors.New("installer process did not start")
