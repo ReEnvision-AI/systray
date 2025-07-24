@@ -94,6 +94,12 @@ func IsNewReleaseAvailable(ctx context.Context) (bool, UpdateResponse) {
 		slog.Warn("malformed response checking for update", "error", err)
 		return false, updateResp
 	}
+
+	if _, err := url.ParseRequestURI(updateResp.UpdateURL); err != nil {
+		slog.Warn("malformed response checking for update", "error", fmt.Sprintf("update URL is not a valid URL: %s", err))
+		return false, updateResp
+	}
+
 	// Extract the version string from the URL in the github release artifact path
 	updateResp.UpdateVersion = path.Base(path.Dir(updateResp.UpdateURL))
 
