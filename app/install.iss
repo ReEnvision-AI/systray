@@ -4,6 +4,11 @@
 #else
   #define MyAppVersion "0.0.0"
 #endif
+#if GetEnv("HF_TOKEN") != ""
+  #define HfToken GetEnv("HF_TOKEN")
+#else
+  #define HfToken "NO_TOKEN_SPECIFIED"
+#endif
 #define MyAppPublisher "ReEnvision AI LLC"
 #define MyAppURL "https://reenvision.ai/"
 #define MyAppExeName "ReEnvisionAI.exe"
@@ -86,7 +91,7 @@ Filename: "Powershell.exe"; Parameters: "-ExecutionPolicy Bypass -File '{tmp}\ws
 
 Filename: "{tmp}\podman-5.4.1-setup.exe"; Parameters: "/quiet"; Flags: shellexec  waituntilterminated; StatusMsg: "Installing Podman, please wait..."; BeforeInstall: SetMarqueeProgress(True); Check: NotAnUpdate
 
-Filename: "{cmd}"; Parameters: "/c cmdkey /generic:ReEnvisionAI/hf_token /user:reai /pass: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"; Flags: runhidden shellexec waituntilterminated; Check: NotAnUpdate
+Filename: "{cmd}"; Parameters: "/c cmdkey /generic:ReEnvisionAI/hf_token /user:reai /pass:{#HfToken}"; Flags: runhidden shellexec waituntilterminated; Check: NotAnUpdate
 
 Filename: "netsh"; Parameters: "advfirewall firewall delete rule name=""ReEnvision AI"""; Flags:  waituntilterminated; Check: NotAnUpdate
 Filename: "netsh"; Parameters: "advfirewall firewall add rule name=""ReEnvision AI"" dir=in action=allow protocol=TCP localport={code:GetPort}"; Flags:  waituntilterminated; StatusMsg: "Setting up firewall rule, please wait..."; AfterInstall: SetMarqueeProgress(False); Check: NotAnUpdate

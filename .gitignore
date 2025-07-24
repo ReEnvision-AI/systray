@@ -2,8 +2,9 @@
 .vscode
 .env
 .venv
-dist
-build
+/dist
+/bin
+.env
 .cache
 *.exe
 .idea

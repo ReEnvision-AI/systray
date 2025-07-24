@@ -1,4 +1,14 @@
-#!powershell
+$envFile = Join-Path $PSScriptRoot "..\.env"
+if (Test-Path $envFile) {
+    Get-Content $envFile | ForEach-Object {
+        if ($_ -match "^HF_TOKEN=(.+)") {
+            $env:HF_TOKEN = $matches[1]
+            Write-Host "HF_TOKEN set from .env file"
+        }
+    }
+}
+
+#!/powershell
 #
 # powershell -ExecutionPolicy Bypass -File .\scripts\build_windows.ps1
 #
@@ -94,4 +104,5 @@ catch {
 finally {
   set-location $script:SRC_DIR
   $env:PKG_VERSION = ""
+  $env:HF_TOKEN = ""
 }
