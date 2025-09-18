@@ -113,7 +113,7 @@ Filename: "{cmd}"; Parameters: "/c timeout 5"; Flags: runhidden; RunOnceId: "Pau
 
 [Messages]
 WizardReady=ReEnvision AI
-ReadyLabel1=%n Let's get you up and running on the world's first dstributed large language model.
+ReadyLabel1=%n Let's get you up and running on the world's first distributed large language model.
 SetupAppRunningError=Another ReEnvision installer is running.%n%nPlease cancel or finish the other installer, then click OK to continue with this installer, or Cancel to exit.
 
 [Code]
