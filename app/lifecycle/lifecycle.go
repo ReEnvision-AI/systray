@@ -32,6 +32,12 @@ var (
 	currentState AppState = StateStopped
 	stateMu      sync.Mutex
 	t            commontray.ReaiTray
+
+	// Sleep/resume state tracking
+	wasRunningBeforeSleep bool
+	sleepStateMu          sync.Mutex
+	sleepChan             chan struct{}
+	wakeChan              chan struct{}
 )
 
 func (s AppState) String() string {
@@ -68,6 +74,13 @@ func Run() {
 
 	callbacks := t.GetCallbacks()
 
+	// Initialize sleep detection
+	sleepChan, wakeChan, err = power.StartSleepDetection()
+	if err != nil {
+		slog.Warn("Failed to start sleep detection", "error", err)
+		// Continue without sleep detection
+	}
+
 	signals := make(chan os.Signal, 1)
 	signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM)
 
@@ -101,6 +114,12 @@ func Run() {
 				if err != nil {
 					slog.Warn("Failed to launch getting started shell", "error", err)
 				}
+			case <-sleepChan:
+				// System is going to sleep
+				handleSleepEvent()
+			case <-wakeChan:
+				// System is waking from sleep
+				handleWakeEvent()
 			}
 		}
 	}()
@@ -204,5 +223,67 @@ func handleQuit() {
 
 	t.Quit()
 
+	// Stop sleep detection
+	if power.WasSleepDetectionActive() {
+		if err := power.StopSleepDetection(); err != nil {
+			slog.Warn("Failed to stop sleep detection", "error", err)
+		}
+	}
+
 	slog.Info("Finished exit procedures.")
+}
+
+// handleSleepEvent is called when the system is going to sleep
+func handleSleepEvent() {
+	slog.Info("Handling system sleep event")
+
+	sleepStateMu.Lock()
+	defer sleepStateMu.Unlock()
+
+	// Check if container is currently running
+	stateMu.Lock()
+	containerIsRunning := currentState == StateRunning
+	stateMu.Unlock()
+
+	if containerIsRunning {
+		slog.Info("Container is running, marking for restart after sleep")
+		wasRunningBeforeSleep = true
+	} else {
+		slog.Info("Container is not running, no restart needed after sleep")
+		wasRunningBeforeSleep = false
+	}
+}
+
+// handleWakeEvent is called when the system is waking from sleep
+func handleWakeEvent() {
+	slog.Info("Handling system wake event")
+
+	sleepStateMu.Lock()
+	defer sleepStateMu.Unlock()
+
+	if wasRunningBeforeSleep {
+		slog.Info("Container was running before sleep, attempting to restart")
+
+		// Check current state first
+		stateMu.Lock()
+		currentStateValue := currentState
+		stateMu.Unlock()
+
+		// Only restart if we're in a state that allows it
+		if currentStateValue == StateStopped || currentStateValue == StateError {
+			slog.Info("Restarting container after sleep")
+			go func() {
+				// Add a small delay to ensure system is fully awake
+				time.Sleep(3 * time.Second)
+				handleStartRequest()
+			}()
+		} else {
+			slog.Info("Container state doesn't allow restart", "state", currentStateValue)
+		}
+
+		// Reset the sleep state flag
+		wasRunningBeforeSleep = false
+	} else {
+		slog.Info("Container was not running before sleep, no restart needed")
+	}
 }
