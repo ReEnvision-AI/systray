@@ -1,6 +1,6 @@
 {
   "container_name": "ReEnvisionAI",
-  "container_image": "ghcr.io/reenvision-ai/agent-grid:1.4.2",
+  "container_image": "ghcr.io/reenvision-ai/agent-grid:1.6.0",
   "initial_peers": "/dns4/sociallyshaped.net/tcp/8788/p2p/QmTUpY86VSyvwvBN8oc9W3JztLaxyabT6b17gnXxdfx5HL",
   "model_name": "nvidia/Llama-3_3-Nemotron-Super-49B-v1_5",
   "default_port": 31330,
