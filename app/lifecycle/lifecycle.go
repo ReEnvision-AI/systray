@@ -2,7 +2,6 @@ package lifecycle
 
 import (
 	"context"
-	"errors"
 	"log"
 	"log/slog"
 	"os"
@@ -38,6 +37,8 @@ var (
 	sleepStateMu          sync.Mutex
 	sleepChan             chan struct{}
 	wakeChan              chan struct{}
+	isShuttingDown        bool
+	shutdownMu            sync.Mutex
 )
 
 func (s AppState) String() string {
@@ -161,15 +162,8 @@ func SetState(newState AppState) {
 	switch newState {
 	case StateStopping, StateStopped, StateError:
 		t.SetStopped()
-		if err := power.AllowSleep(); err != nil && !errors.Is(err, power.ErrAlreadyAllowed) {
-			slog.Warn("Failed to allow system sleep", "error", err)
-		}
-
 	case StateStarting, StateRunning:
 		t.SetStarted()
-		if err := power.PreventSleep(); err != nil && !errors.Is(err, power.ErrAlreadyPrevented) {
-			slog.Warn("Failed to prevent system sleep", "error", err)
-		}
 	}
 }
 
@@ -205,6 +199,11 @@ func handleStopRequest() {
 func handleQuit() {
 	slog.Info("Quitting..")
 
+	// Set shutdown flag to prevent sleep/wake event processing
+	shutdownMu.Lock()
+	isShuttingDown = true
+	shutdownMu.Unlock()
+
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), podmanStopTimeout+5*time.Second) // Give a bit extra time
 	defer cancel()
 
@@ -235,6 +234,15 @@ func handleQuit() {
 
 // handleSleepEvent is called when the system is going to sleep
 func handleSleepEvent() {
+	// Skip sleep event handling during shutdown
+	shutdownMu.Lock()
+	shuttingDown := isShuttingDown
+	shutdownMu.Unlock()
+
+	if shuttingDown {
+		return
+	}
+
 	slog.Info("Handling system sleep event")
 
 	sleepStateMu.Lock()
@@ -256,6 +264,15 @@ func handleSleepEvent() {
 
 // handleWakeEvent is called when the system is waking from sleep
 func handleWakeEvent() {
+	// Skip wake event handling during shutdown
+	shutdownMu.Lock()
+	shuttingDown := isShuttingDown
+	shutdownMu.Unlock()
+
+	if shuttingDown {
+		return
+	}
+
 	slog.Info("Handling system wake event")
 
 	sleepStateMu.Lock()
@@ -269,17 +286,24 @@ func handleWakeEvent() {
 		currentStateValue := currentState
 		stateMu.Unlock()
 
-		// Only restart if we're in a state that allows it
-		if currentStateValue == StateStopped || currentStateValue == StateError {
-			slog.Info("Restarting container after sleep")
-			go func() {
-				// Add a small delay to ensure system is fully awake
-				time.Sleep(3 * time.Second)
-				handleStartRequest()
-			}()
-		} else {
-			slog.Info("Container state doesn't allow restart", "state", currentStateValue)
-		}
+		// Always restart the container if it was running before sleep, as the process
+		// might be in an inconsistent state after sleep
+		slog.Info("Restarting container after sleep", "previous_state", currentStateValue)
+		go func() {
+			// Add a small delay to ensure system is fully awake
+			time.Sleep(3 * time.Second)
+
+			// Force stop first if the container appears to be running
+			if currentStateValue == StateRunning || currentStateValue == StateStarting {
+				slog.Info("Stopping potentially inconsistent container before restart")
+				handleStopRequest()
+				// Give it a moment to stop
+				time.Sleep(2 * time.Second)
+			}
+
+			slog.Info("Starting container after sleep")
+			handleStartRequest()
+		}()
 
 		// Reset the sleep state flag
 		wasRunningBeforeSleep = false

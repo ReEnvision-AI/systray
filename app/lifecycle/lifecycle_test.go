@@ -287,12 +287,25 @@ func TestPowerManagementIntegration(t *testing.T) {
 	setupMockTray()
 	defer resetState()
 
-	// Test that power management is called when setting states
+	// Test that state transitions work correctly without sleep prevention
 	SetState(StateRunning)
-	// Verify that power.PreventSleep() was called (would need to mock power package for full verification)
+
+	stateMu.Lock()
+	if currentState != StateRunning {
+		t.Errorf("Expected state to be StateRunning, got %d", currentState)
+	}
+	stateMu.Unlock()
 
 	SetState(StateStopped)
-	// Verify that power.AllowSleep() was called (would need to mock power package for full verification)
+
+	stateMu.Lock()
+	if currentState != StateStopped {
+		t.Errorf("Expected state to be StateStopped, got %d", currentState)
+	}
+	stateMu.Unlock()
+
+	// Note: Sleep prevention functionality has been removed
+	// Sleep detection and resume functionality should still work
 }
 
 func TestSleepDetectionChannels(t *testing.T) {

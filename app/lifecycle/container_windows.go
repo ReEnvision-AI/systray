@@ -214,7 +214,7 @@ func buildPodmanRunCommandArgs() []string {
 		"--name=" + appConfig.ContainerName,
 		"--volume=" + podmanVolumeName, // Mount cache volume
 		"--pull=newer",                 // Pulls newer image even if same version
-		"-e AGENT_GRID_VERSION=1.3.1",
+		"-e AGENT_GRID_VERSION=1.6.0",
 	}
 
 	// GPU arguments - Use CDI if available, requires Podman >= 4.x

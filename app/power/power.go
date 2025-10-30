@@ -8,7 +8,6 @@ import (
 	"log/slog"
 	"sync"
 	"syscall"
-	"unsafe"
 )
 
 // Error indicating sleep prevention was requested but already active.
@@ -27,24 +26,15 @@ const (
 
 // Windows message constants for power events
 const (
-	WM_POWERBROADCAST = 0x0218
-	PBT_APMSUSPEND    = 0x0004
+	PBT_APMSUSPEND     = 0x0004
 	PBT_APMRESUMEAUTO  = 0x0012
 	PBT_APMRESUMESUSPEND = 0x0007
-)
-
-// Windows API constants
-const (
-	WM_USER = 0x0400
 )
 
 // Variables for windows sleep
 var (
 	kernel32                = syscall.MustLoadDLL("kernel32.dll")
 	setThreadExecutionState = kernel32.MustFindProc("SetThreadExecutionState")
-	user32                  = syscall.MustLoadDLL("user32.dll")
-	getMessageW             = user32.MustFindProc("GetMessageW")
-	postMessageW            = user32.MustFindProc("PostMessageW")
 
 	isSleepPrevented bool
 	powerStateMu     sync.Mutex
@@ -109,18 +99,6 @@ func AllowSleep() error {
 	return nil
 }
 
-// MSG structure for Windows messages
-type MSG struct {
-	Hwnd    uintptr
-	Message uint32
-	WParam  uintptr
-	LParam  uintptr
-	Time    uint32
-	Pt      struct {
-		X, Y int32
-	}
-}
-
 // StartSleepDetection begins monitoring for system sleep/wake events
 func StartSleepDetection() (chan struct{}, chan struct{}, error) {
 	sleepDetectMu.Lock()
@@ -134,10 +112,11 @@ func StartSleepDetection() (chan struct{}, chan struct{}, error) {
 	wakeCallbackChan = make(chan struct{}, 1)
 	stopSleepDetectChan = make(chan struct{})
 
-	go sleepDetectionLoop()
+	// Sleep detection is now handled by the tray window procedure
+	// No need for a separate message loop
 
 	sleepDetectActive = true
-	slog.Info("Sleep detection started")
+	slog.Info("Sleep detection started (integrated with tray window)")
 
 	return sleepCallbackChan, wakeCallbackChan, nil
 }
@@ -166,42 +145,13 @@ func StopSleepDetection() error {
 	return nil
 }
 
-// sleepDetectionLoop runs in a goroutine to detect sleep/wake events
-func sleepDetectionLoop() {
-	var msg MSG
+// sleepDetectionLoop is no longer needed since power broadcast messages
+// are now handled directly by the tray window procedure
+// func sleepDetectionLoop() { ... }
 
-	for {
-		select {
-		case <-stopSleepDetectChan:
-			slog.Debug("Sleep detection loop stopping")
-			return
-		default:
-			// Use GetMessageW to wait for Windows messages
-			ret, _, err := getMessageW.Call(
-				uintptr(unsafe.Pointer(&msg)),
-				0, 0, 0,
-			)
-
-			if ret == 0 {
-				// WM_QUIT received
-				slog.Debug("WM_QUIT received in sleep detection")
-				return
-			}
-
-			if ret == ^uintptr(0) {
-				// Error occurred
-				if err != nil && err != syscall.Errno(0) {
-					slog.Error("Error in GetMessageW", "error", err)
-				}
-				continue
-			}
-
-			// Check for power broadcast messages
-			if msg.Message == WM_POWERBROADCAST {
-				handlePowerBroadcast(msg.WParam, msg.LParam)
-			}
-		}
-	}
+// HandlePowerBroadcast processes Windows power broadcast messages (exported function)
+func HandlePowerBroadcast(wParam, lParam uintptr) {
+	handlePowerBroadcast(wParam, lParam)
 }
 
 // handlePowerBroadcast processes Windows power broadcast messages

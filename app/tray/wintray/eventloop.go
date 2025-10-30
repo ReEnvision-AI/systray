@@ -6,6 +6,7 @@ import (
 	"sync"
 	"unsafe"
 
+	"github.com/ReEnvision-AI/systray/app/power"
 	"golang.org/x/sys/windows"
 )
 
@@ -50,14 +51,18 @@ func nativeLoop() {
 // https://msdn.microsoft.com/en-us/library/windows/desktop/ms633573(v=vs.85).aspx
 func (t *winTray) wndProc(hWnd windows.Handle, message uint32, wParam, lParam uintptr) (lResult uintptr) {
 	const (
-		WM_RBUTTONUP   = 0x0205
-		WM_LBUTTONUP   = 0x0202
-		WM_COMMAND     = 0x0111
-		WM_ENDSESSION  = 0x0016
-		WM_CLOSE       = 0x0010
-		WM_DESTROY     = 0x0002
-		WM_MOUSEMOVE   = 0x0200
-		WM_LBUTTONDOWN = 0x0201
+		WM_RBUTTONUP       = 0x0205
+		WM_LBUTTONUP       = 0x0202
+		WM_COMMAND         = 0x0111
+		WM_ENDSESSION      = 0x0016
+		WM_CLOSE           = 0x0010
+		WM_DESTROY         = 0x0002
+		WM_MOUSEMOVE       = 0x0200
+		WM_LBUTTONDOWN     = 0x0201
+		WM_POWERBROADCAST  = 0x0218
+		PBT_APMSUSPEND     = 0x0004
+		PBT_APMRESUMEAUTO  = 0x0012
+		PBT_APMRESUMESUSPEND = 0x0007
 	)
 	switch message {
 	case WM_COMMAND:
@@ -162,6 +167,8 @@ func (t *winTray) wndProc(hWnd windows.Handle, message uint32, wParam, lParam ui
 			slog.Error("failed to refresh the taskbar on explorer restart", "error", err)
 		}
 		t.muNID.Unlock()
+	case WM_POWERBROADCAST:
+		power.HandlePowerBroadcast(wParam, lParam)
 	default:
 		// Calls the default window procedure to provide default processing for any window messages that an application does not process.
 		// https://msdn.microsoft.com/en-us/library/windows/desktop/ms633572(v=vs.85).aspx

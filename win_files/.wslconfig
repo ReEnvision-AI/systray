@@ -1,7 +1,6 @@
 [wsl2]
 # Limits VM memory to use no more than 8 GB
 memory=8GB
-
-[experimental]
-# Automatically release cached memory after detecting idle CPU usage
-autoMemoryReclaim=dropCache
+swap=2GB
+autoMemoryReclaim=gradual
+localhostForwarding=true
