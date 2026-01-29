@@ -2,5 +2,4 @@
 # Limits VM memory to use no more than 8 GB
 memory=8GB
 swap=2GB
-autoMemoryReclaim=gradual
 localhostForwarding=true
