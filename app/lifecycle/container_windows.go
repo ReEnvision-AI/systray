@@ -9,10 +9,21 @@ import (
 	"log/slog"
 	"os/exec"
 	"strconv"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
 )
+
+// redactToken removes the HuggingFace token from a string before it is logged.
+// The token is passed on the podman command line, so the full command string
+// (and anything derived from it) must never be written to the log verbatim.
+func redactToken(s string) string {
+	if appConfig.Token == "" {
+		return s
+	}
+	return strings.ReplaceAll(s, appConfig.Token, "***REDACTED***")
+}
 
 const (
 	podmanVolumeName          = "reai-cache:/cache"
@@ -62,7 +73,7 @@ func StartContainer(ctx context.Context) error {
 	args := buildPodmanRunCommandArgs()
 	currentCmd = exec.CommandContext(cmdCtx, "podman", args...)
 	currentCmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
-	slog.Info("Starting container", "command", currentCmd.String())
+	slog.Info("Starting container", "command", redactToken(currentCmd.String()))
 
 	stdoutPipe, err := currentCmd.StdoutPipe()
 	if err != nil {

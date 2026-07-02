@@ -2,6 +2,8 @@ package lifecycle
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -25,11 +27,40 @@ var (
 	UpdateCheckURLBase  = "https://sociallyshaped.net/api/update"
 	UpdateDownloaded    = false
 	UpdateCheckInterval = 24 * time.Hour
+
+	// allowedUpdateHosts is the allow-list of hosts we will download an installer
+	// from. The update endpoint returns the download URL, so without this an
+	// attacker who controls the response could point clients at any host. Only
+	// HTTPS URLs whose host is in this set are accepted.
+	allowedUpdateHosts = map[string]bool{
+		"github.com":                true,
+		"objects.githubusercontent.com": true, // GitHub release asset redirect target
+	}
 )
 
 type UpdateResponse struct {
 	UpdateURL     string `json:"url"`
 	UpdateVersion string `json:"version"`
+	// SHA256, when provided by the update endpoint, is verified against the
+	// downloaded installer before it is staged. It must be a lowercase hex digest.
+	SHA256 string `json:"sha256"`
+}
+
+// isTrustedUpdateURL returns nil only if u is an https URL whose host is in the
+// allow-list. This is the primary gate preventing a compromised or spoofed
+// update endpoint from staging an arbitrary binary from an attacker host.
+func isTrustedUpdateURL(u string) error {
+	parsed, err := url.Parse(u)
+	if err != nil {
+		return fmt.Errorf("update URL is not a valid URL: %w", err)
+	}
+	if parsed.Scheme != "https" {
+		return fmt.Errorf("update URL must use https, got %q", parsed.Scheme)
+	}
+	if !allowedUpdateHosts[parsed.Hostname()] {
+		return fmt.Errorf("update URL host %q is not in the trusted allow-list", parsed.Hostname())
+	}
+	return nil
 }
 
 func IsNewReleaseAvailable(ctx context.Context) (bool, UpdateResponse) {
@@ -95,8 +126,8 @@ func IsNewReleaseAvailable(ctx context.Context) (bool, UpdateResponse) {
 		return false, updateResp
 	}
 
-	if _, err := url.ParseRequestURI(updateResp.UpdateURL); err != nil {
-		slog.Warn("malformed response checking for update", "error", fmt.Sprintf("update URL is not a valid URL: %s", err))
+	if err := isTrustedUpdateURL(updateResp.UpdateURL); err != nil {
+		slog.Warn("rejecting update: untrusted download URL", "url", updateResp.UpdateURL, "error", err)
 		return false, updateResp
 	}
 
@@ -108,6 +139,12 @@ func IsNewReleaseAvailable(ctx context.Context) (bool, UpdateResponse) {
 }
 
 func DownloadNewRelease(ctx context.Context, updateResp UpdateResponse) error {
+	// Defense in depth: re-validate the URL here too, since this function is
+	// separately callable and must never fetch from an untrusted host.
+	if err := isTrustedUpdateURL(updateResp.UpdateURL); err != nil {
+		return fmt.Errorf("refusing to download update: %w", err)
+	}
+
 	// Do a head first to check etag info
 	req, err := http.NewRequestWithContext(ctx, http.MethodHead, updateResp.UpdateURL, nil)
 	if err != nil {
@@ -171,13 +208,33 @@ func DownloadNewRelease(ctx context.Context, updateResp UpdateResponse) error {
 	}
 	defer fp.Close()
 
-	// Stream the download directly to the file
-	_, err = io.Copy(fp, resp.Body)
+	// Stream the download directly to the file while hashing it in one pass.
+	hasher := sha256.New()
+	_, err = io.Copy(fp, io.TeeReader(resp.Body, hasher))
 	if err != nil {
 		// Clean up partially downloaded file on error
 		os.Remove(stageFilename)
 		return fmt.Errorf("failed to write update to %s: %w", stageFilename, err)
 	}
+
+	// Integrity check: when the update endpoint supplies a SHA-256, the installer
+	// must match it or we delete it and refuse the update. Without this the
+	// downloaded binary is trusted purely on transport, which is not sufficient
+	// for something we execute with silent installer privileges.
+	if updateResp.SHA256 != "" {
+		got := hex.EncodeToString(hasher.Sum(nil))
+		if !strings.EqualFold(got, updateResp.SHA256) {
+			os.Remove(stageFilename)
+			return fmt.Errorf("update checksum mismatch: expected %s, got %s", updateResp.SHA256, got)
+		}
+		slog.Info("update checksum verified", "sha256", got)
+	} else {
+		// TODO(security): require a signed checksum (and ideally an Authenticode
+		// signature verified via WinVerifyTrust) before this is re-enabled for
+		// production rollouts. See SECURITY notes / finding C-1.
+		slog.Warn("update has no SHA-256 to verify; staging on transport trust only")
+	}
+
 	slog.Info("new update downloaded " + stageFilename)
 
 	UpdateDownloaded = true
