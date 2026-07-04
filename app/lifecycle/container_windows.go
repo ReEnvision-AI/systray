@@ -145,7 +145,10 @@ func StartContainer(ctx context.Context) error {
 			if !(errors.Is(waitErr, context.Canceled) && isStopping) {
 				slog.Error("Container process exited unexpectedly.", "error", waitErr)
 				if !isStopping { // Avoid overwriting Stopping state
-					SetState(StateError)
+					// Attempt an automatic restart with backoff (crash-loop capped),
+					// so a transient crash doesn't silently drop the host from the
+					// swarm until a human notices the tray icon.
+					scheduleAutoRestart()
 				}
 			} else {
 				slog.Info("Container process exited after cancellation (likely during stop).")
@@ -222,10 +225,14 @@ func buildPodmanRunCommandArgs() []string {
 		"run",
 		"--network=host", // Use host networking
 		"--rm",           // Remove container on exit
+		"--replace",      // Replace any leftover container with the same name (avoids
+		//              "name already in use" races on crash-restart and wake-restart)
 		"--name=" + appConfig.ContainerName,
 		"--volume=" + podmanVolumeName, // Mount cache volume
 		"--pull=newer",                 // Pulls newer image even if same version
-		"-e AGENT_GRID_VERSION=1.6.0",
+		// Pass flag and value as separate argv tokens (a single "-e NAME=VALUE"
+		// string is fragile — the flag and value must not share one token).
+		"-e", "AGENT_GRID_VERSION=1.6.0",
 	}
 
 	// GPU arguments - Use CDI if available, requires Podman >= 4.x
