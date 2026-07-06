@@ -33,7 +33,7 @@ var (
 	// attacker who controls the response could point clients at any host. Only
 	// HTTPS URLs whose host is in this set are accepted.
 	allowedUpdateHosts = map[string]bool{
-		"github.com":                true,
+		"github.com":                    true,
 		"objects.githubusercontent.com": true, // GitHub release asset redirect target
 	}
 )

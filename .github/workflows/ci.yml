@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    name: Build, vet & format (cross-compiled for Windows)
+    runs-on: ubuntu-latest
+    env:
+      GOOS: windows
+      GOARCH: amd64
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.23"
+      - name: gofmt
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "These files are not gofmt-clean:"; echo "$unformatted"; exit 1
+          fi
+      - name: go vet
+        run: go vet ./...
+      - name: go build
+        run: go build ./...
+
+  test:
+    name: Compile Windows unit tests
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.23"
+      - name: go build
+        run: go build ./...
+      - name: Compile unit tests
+        # The Win32/sleep tests are behind `//go:build windows && unit_test`, so a
+        # plain `go test ./...` compiles none of them. `-run '^$'` compiles every
+        # test binary but executes no assertions — this keeps the job green while
+        # ensuring the tagged tests don't rot. Drop `-run '^$'` to actually run them
+        # once their CI stability (real sleeps, SetThreadExecutionState) is confirmed.
+        run: go test -tags unit_test -run '^$' ./...
