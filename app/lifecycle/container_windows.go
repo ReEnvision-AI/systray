@@ -218,6 +218,22 @@ func StopContainer(ctx context.Context) error {
 	return nil
 }
 
+// imageTag returns the tag portion of a container image reference (the part
+// after the final ':' that is not a registry host:port). Falls back to "latest"
+// when no explicit tag is present.
+func imageTag(image string) string {
+	idx := strings.LastIndex(image, ":")
+	if idx == -1 {
+		return "latest"
+	}
+	tag := image[idx+1:]
+	if strings.Contains(tag, "/") {
+		// The ':' belonged to a registry host:port, not a tag.
+		return "latest"
+	}
+	return tag
+}
+
 func buildPodmanRunCommandArgs() []string {
 
 	// Base arguments
@@ -230,9 +246,10 @@ func buildPodmanRunCommandArgs() []string {
 		"--name=" + appConfig.ContainerName,
 		"--volume=" + podmanVolumeName, // Mount cache volume
 		"--pull=newer",                 // Pulls newer image even if same version
-		// Pass flag and value as separate argv tokens (a single "-e NAME=VALUE"
-		// string is fragile — the flag and value must not share one token).
-		"-e", "AGENT_GRID_VERSION=1.6.0",
+		// Derive the version from the container image tag so it can't drift from
+		// what actually runs. (Currently informational — the engine does not read
+		// AGENT_GRID_VERSION yet.) Flag and value are separate argv tokens.
+		"-e", "AGENT_GRID_VERSION=" + imageTag(appConfig.ContainerImage),
 	}
 
 	// GPU arguments - Use CDI if available, requires Podman >= 4.x
