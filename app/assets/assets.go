@@ -13,5 +13,5 @@ func ListIcons() ([]string, error) {
 }
 
 func GetIcon(filename string) ([]byte, error) {
-	return	icons.ReadFile(filename)
+	return icons.ReadFile(filename)
 }

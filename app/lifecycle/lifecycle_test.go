@@ -17,9 +17,9 @@ type mockTray struct {
 	callbacks  commontray.Callbacks
 }
 
-func (m *mockTray) Run()                               {}
-func (m *mockTray) Quit()                              {}
-func (m *mockTray) UpdateAvailable(ver string) error   { return nil }
+func (m *mockTray) Run()                             {}
+func (m *mockTray) Quit()                            {}
+func (m *mockTray) UpdateAvailable(ver string) error { return nil }
 func (m *mockTray) GetCallbacks() commontray.Callbacks {
 	return m.callbacks
 }
@@ -27,8 +27,8 @@ func (m *mockTray) ChangeStatusText(text string) error {
 	m.statusText = text
 	return nil
 }
-func (m *mockTray) SetStarted() error   { m.started = true; return nil }
-func (m *mockTray) SetStopped() error   { m.started = false; return nil }
+func (m *mockTray) SetStarted() error                  { m.started = true; return nil }
+func (m *mockTray) SetStopped() error                  { m.started = false; return nil }
 func (m *mockTray) DisplayFirstUseNotification() error { return nil }
 
 func setupMockTray() *mockTray {

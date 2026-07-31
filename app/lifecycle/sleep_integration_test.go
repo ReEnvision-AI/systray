@@ -191,8 +191,8 @@ func TestPowerStateTransitions(t *testing.T) {
 
 	// Test all valid state transitions during sleep/wake scenarios
 	testCases := []struct {
-		name           string
-		initialState   AppState
+		name               string
+		initialState       AppState
 		expectedAfterSleep bool
 	}{
 		{"RunningState", StateRunning, true},

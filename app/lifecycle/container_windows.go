@@ -9,10 +9,21 @@ import (
 	"log/slog"
 	"os/exec"
 	"strconv"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
 )
+
+// redactToken removes the HuggingFace token from a string before it is logged.
+// The token is passed on the podman command line, so the full command string
+// (and anything derived from it) must never be written to the log verbatim.
+func redactToken(s string) string {
+	if appConfig.Token == "" {
+		return s
+	}
+	return strings.ReplaceAll(s, appConfig.Token, "***REDACTED***")
+}
 
 const (
 	podmanVolumeName          = "reai-cache:/cache"
@@ -62,7 +73,7 @@ func StartContainer(ctx context.Context) error {
 	args := buildPodmanRunCommandArgs()
 	currentCmd = exec.CommandContext(cmdCtx, "podman", args...)
 	currentCmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
-	slog.Info("Starting container", "command", currentCmd.String())
+	slog.Info("Starting container", "command", redactToken(currentCmd.String()))
 
 	stdoutPipe, err := currentCmd.StdoutPipe()
 	if err != nil {
@@ -134,7 +145,10 @@ func StartContainer(ctx context.Context) error {
 			if !(errors.Is(waitErr, context.Canceled) && isStopping) {
 				slog.Error("Container process exited unexpectedly.", "error", waitErr)
 				if !isStopping { // Avoid overwriting Stopping state
-					SetState(StateError)
+					// Attempt an automatic restart with backoff (crash-loop capped),
+					// so a transient crash doesn't silently drop the host from the
+					// swarm until a human notices the tray icon.
+					scheduleAutoRestart()
 				}
 			} else {
 				slog.Info("Container process exited after cancellation (likely during stop).")
@@ -204,6 +218,22 @@ func StopContainer(ctx context.Context) error {
 	return nil
 }
 
+// imageTag returns the tag portion of a container image reference (the part
+// after the final ':' that is not a registry host:port). Falls back to "latest"
+// when no explicit tag is present.
+func imageTag(image string) string {
+	idx := strings.LastIndex(image, ":")
+	if idx == -1 {
+		return "latest"
+	}
+	tag := image[idx+1:]
+	if strings.Contains(tag, "/") {
+		// The ':' belonged to a registry host:port, not a tag.
+		return "latest"
+	}
+	return tag
+}
+
 func buildPodmanRunCommandArgs() []string {
 
 	// Base arguments
@@ -211,10 +241,15 @@ func buildPodmanRunCommandArgs() []string {
 		"run",
 		"--network=host", // Use host networking
 		"--rm",           // Remove container on exit
+		"--replace",      // Replace any leftover container with the same name (avoids
+		//              "name already in use" races on crash-restart and wake-restart)
 		"--name=" + appConfig.ContainerName,
 		"--volume=" + podmanVolumeName, // Mount cache volume
 		"--pull=newer",                 // Pulls newer image even if same version
-		"-e AGENT_GRID_VERSION=1.6.0",
+		// Derive the version from the container image tag so it can't drift from
+		// what actually runs. (Currently informational — the engine does not read
+		// AGENT_GRID_VERSION yet.) Flag and value are separate argv tokens.
+		"-e", "AGENT_GRID_VERSION=" + imageTag(appConfig.ContainerImage),
 	}
 
 	// GPU arguments - Use CDI if available, requires Podman >= 4.x

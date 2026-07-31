@@ -180,6 +180,66 @@ func handleStartRequest() {
 	}
 }
 
+// Crash-restart policy: automatically restart the container after an unexpected
+// exit, but give up (leaving StateError for manual restart) if it crashes more
+// than crashRestartMaxCount times within crashRestartWindow, to avoid a hot loop.
+const (
+	crashRestartWindow   = 10 * time.Minute
+	crashRestartMaxCount = 5
+	crashRestartBackoff  = 5 * time.Second
+)
+
+var (
+	crashTimes []time.Time
+	crashMu    sync.Mutex
+)
+
+// scheduleAutoRestart is invoked from the container-wait goroutine when the
+// container exits unexpectedly. It records the crash, and either schedules a
+// backed-off restart or, if crashing too frequently, stops trying.
+func scheduleAutoRestart() {
+	shutdownMu.Lock()
+	shuttingDown := isShuttingDown
+	shutdownMu.Unlock()
+	if shuttingDown {
+		return
+	}
+
+	now := time.Now()
+	crashMu.Lock()
+	cutoff := now.Add(-crashRestartWindow)
+	kept := crashTimes[:0]
+	for _, ts := range crashTimes {
+		if ts.After(cutoff) {
+			kept = append(kept, ts)
+		}
+	}
+	crashTimes = append(kept, now)
+	count := len(crashTimes)
+	crashMu.Unlock()
+
+	if count > crashRestartMaxCount {
+		slog.Error("Container crashed too many times; not restarting automatically",
+			"crashes", count, "window", crashRestartWindow)
+		SetState(StateError)
+		return
+	}
+
+	slog.Warn("Container exited unexpectedly; scheduling automatic restart",
+		"attempt", count, "backoff", crashRestartBackoff)
+	SetState(StateStarting)
+	go func() {
+		time.Sleep(crashRestartBackoff)
+		shutdownMu.Lock()
+		sd := isShuttingDown
+		shutdownMu.Unlock()
+		if sd {
+			return
+		}
+		handleStartRequest()
+	}()
+}
+
 func handleStopRequest() {
 	SetState(StateStopping)
 	ctx, cancel := context.WithTimeout(context.Background(), podmanStopTimeout)

@@ -26,8 +26,8 @@ const (
 
 // Windows message constants for power events
 const (
-	PBT_APMSUSPEND     = 0x0004
-	PBT_APMRESUMEAUTO  = 0x0012
+	PBT_APMSUSPEND       = 0x0004
+	PBT_APMRESUMEAUTO    = 0x0012
 	PBT_APMRESUMESUSPEND = 0x0007
 )
 
